@@ -2,6 +2,9 @@
 
 ## Description
 
+Speed comparison (on my PC):
+<https://youtu.be/dV8kicV9BhA>
+
 For Guilty Gear Xrd Rev2 version 2211 (2211 - the number displayed on the main manu in the lower right corner after launching the game). Makes the pre-battle loading screen load game contents synchronously, instead of asynchronously, therefore speeding up the loading times significantly on faster machines with fast hard disk read speeds (like SSD). Works as of 24'th February 2025.
 
 Works as a patcher. You only need to apply the patch once, and the game will work with the changes forever.
