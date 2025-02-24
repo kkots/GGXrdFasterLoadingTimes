@@ -25,7 +25,4 @@
   <ItemGroup>
     <None Include="README.md" />
   </ItemGroup>
-  <ItemGroup>
-    <CopyFileToFolders Include="GGXrdFasterLoadingTimes_linux" />
-  </ItemGroup>
 </Project>
