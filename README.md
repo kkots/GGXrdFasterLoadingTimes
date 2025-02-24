@@ -17,7 +17,7 @@ If the game is of a version that's different from 2211, the patcher may crash, o
 
 If you're on Windows, launch the `GGXrdFasterLoadingTimes.exe` and select the GuiltyGearXrd.exe file, located in the game's Steam directory. For example, here: `C:\Program Files (x86)\Steam\steamapps\common\GUILTY GEAR Xrd -REVELATOR-\Binaries\Win32\GuiltyGearXrd.exe`
 
-If you're on Linux, launch `./GGXrdFasterLoadingTimes_linux` and paste or type in the path to your GuiltyGearXrd.exe file into the terminal window. You might be able to find it in `/home/YOUR_USER/.steam/steamapps/common/GUILTY GEAR Xrd -REVELATOR-\Binaries\Win32\GuiltyGearXrd.exe`
+If you're on Linux, launch `./GGXrdFasterLoadingTimes_linux`. If it doesn't launch, make sure you have the execute permission: `chmod u+x GGXrdFasterLoadingTimes_linux`. After it launches, paste or type in the path to your GuiltyGearXrd.exe file into the terminal window. You might be able to find it in `/home/YOUR_USER/.steam/steamapps/common/GUILTY GEAR Xrd -REVELATOR-\Binaries\Win32\GuiltyGearXrd.exe`
 
 Afterwards, in both cases, the patcher will create a backup copy of the .EXE file and attempt to patch it. If successful, a `Patch successful!` message will appear.
 
