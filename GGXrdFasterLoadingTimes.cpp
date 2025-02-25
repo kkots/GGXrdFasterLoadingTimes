@@ -527,7 +527,7 @@ void printFoundRelocs(const std::vector<FoundReloc>& relocs) {
 
 // Finds the file position of the start of the reloc table and its size
 void findRelocTable(FILE* file, const std::vector<Section>& sections, DWORD* relocRawPosPtr, DWORD* relocSizePtr,
-					DWORD* relocSectionHader, bool seekFileBackToWhereItWas = true) {
+					DWORD* relocSectionHeader, bool seekFileBackToWhereItWas = true) {
 	
 	int oldPos;
 	if (seekFileBackToWhereItWas) {
@@ -539,7 +539,7 @@ void findRelocTable(FILE* file, const std::vector<Section>& sections, DWORD* rel
 	DWORD peHeaderStart = 0;
     fread(&peHeaderStart, 4, 1, file);
 	
-    *relocSectionHader = peHeaderStart + 0xA0;
+    *relocSectionHeader = peHeaderStart + 0xA0;
     fseek(file, peHeaderStart + 0xA0, SEEK_SET);
     
     DWORD relocRva = 0;
@@ -787,76 +787,40 @@ void meatOfTheProgram() {
 	jmpPos += (loadAssetsBegin - wholeFileBegin) & 0xFFFFFFFF;
 	CrossPlatformCout << "Found 'if (bBlocking != 0) {' instruction in LoadAssets at file:0x" << std::hex << jmpPos << std::dec << ".\n";
 	
-	// The new assembler program:
-	/*
-use32
-
-8B 44 24 04       MOV EAX,dword [ESP+0x4]
-56                PUSH ESI
-89 CE             MOV ESI,ECX
-FF 40 18          INC dword [EAX+0x18]
-8B 48 1C          MOV ECX,dword [EAX+0x1c]
-31 D2             XOR EDX,EDX
-42                INC EDX
-8B 01             MOV EAX,dword [ECX]
-39 D0             CMP EAX,EDX
-77 04             JA returnZero
-74 08             JZ doProperCheck
-EB 16             JMP second
-                  returnZero:
-31 C0             XOR EAX,EAX
-EB 1B             JMP return
-75 10             JNE second
-                  doProperCheck:
-8B 86 D0 01 00 00 MOV EAX,dword [ESI+0x1d0]
-83 F8 64          CMP EAX,0x64
-74 EF             JZ returnZero
-31 C0             XOR EAX,EAX
-40                INC EAX
-EB 09             JMP return
-                  second:
-8B 41 04          MOV EAX,dword [ECX+0x4]
-39 D0             CMP EAX,EDX
-74 E9             JZ doProperCheck
-31 C0             XOR EAX,EAX
-                  return:
-8B 4C 24 0C       MOV ECX,dword [ESP+0xc]
-89 01             MOV dword [ECX],EAX
-5E                POP ESI
-C2 08 00          RET 0x8
-*/
-	
 	fseek(file, execIsAsyncLoadingPos, SEEK_SET);
 	char writeBuf[] =
-		"\x8B\x44\x24\x04"
-		"\x56"
-		"\x89\xCE"
-		"\xFF\x40\x18"
-		"\x8B\x48\x1C"
-		"\x31\xD2"
-		"\x42"
-		"\x8B\x01"
-		"\x39\xD0"
-		"\x77\x04"
-		"\x74\x08"
-		"\xEB\x16"
-		"\x31\xC0"
-		"\xEB\x1B"
-		"\x75\x10"
-		"\x8B\x86\xD0\x01\x00\x00"
-		"\x83\xF8\x64"
-		"\x74\xEF"
-		"\x31\xC0"
-		"\x40"
-		"\xEB\x09"
-		"\x8B\x41\x04"
-		"\x39\xD0"
-		"\x74\xE9"
-		"\x31\xC0"
-		"\x8B\x4C\x24\x0C"
-		"\x89\x01"
-		"\x5E"
-		"\xC2\x08\x00";
+		"\x8B\x44\x24\x04"         // MOV EAX,dword [ESP+0x4]  ; this argument is an FFrame* and is called Stack in most UE3 source code
+		"\x56"                     // PUSH ESI
+		"\x89\xCE"                 // MOV ESI,ECX
+		"\xFF\x40\x18"             // INC dword [EAX+0x18]  ; increment stack->Code
+		"\x8B\x48\x1C"             // MOV ECX,dword [EAX+0x1c]  ; this is stack->Locals, it stores local variables of the unrealscript
+		"\x31\xD2"                 // XOR EDX,EDX
+		"\x42"                     // INC EDX
+		"\x8B\x01"                 // MOV EAX,dword [ECX]  ; The first value could either be a TArray (local array<SpawnPlayerInfo> Info) or a BOOL (local bool press1P). TArray's first element is a pointer
+		"\x39\xD0"                 // CMP EAX,EDX
+		"\x77\x04"                 // JA returnZero  ; > 1? Probably it's a TArray. In this part of unrealscript (UpdateWaitCharaLoad unrealscript function) we want to report that we're not async loading
+		"\x74\x08"                 // JZ doProperCheck  ; if it's 1, that means it's the local bool press1P variable and it is TRUE. In this part of the script, we want to check if loading is actually finished
+		"\xEB\x16"                 // JMP second  ; check the other variable, press2P
+		// returnZero:
+		"\x31\xC0"                 // XOR EAX,EAX
+		"\xEB\x1B"                 // JMP return
+		// doProperCheck:
+		"\x8B\x86\xD0\x01\x00\x00" // MOV EAX,dword [ESI+0x1d0]  ; this object is a REDGfxMoviePlayer_MenuInterlude and 0x1d0 is an int VSLoadPercent, from 0 to 100
+		"\x83\xF8\x64"             // CMP EAX,0x64  ; compare to 100
+		"\x74\xEF"                 // JZ returnZero  ; if it's fully loaded, we want to report that we're not async loading, which will let the user's mash skip the loading screen
+		"\x31\xC0"                 // XOR EAX,EAX  ; report that we're async loading (EAX 1). This means that the user cannot skip the loading screen despite them mashing
+		"\x40"                     // INC EAX
+		"\xEB\x09"                 // JMP return
+		// second:
+		"\x8B\x41\x04"             // MOV EAX,dword [ECX+0x4]  ; check local bool press2P
+		"\x39\xD0"                 // CMP EAX,EDX
+		"\x74\xE9"                 // JZ doProperCheck
+		"\x31\xC0"                 // XOR EAX,EAX
+		// return:
+		"\x8B\x4C\x24\x0C"         // MOV ECX,dword [ESP+0xc]  ; this function argument is called void* Result and we cast it to BOOL* to return a BOOL
+		"\x89\x01"                 // MOV dword [ECX],EAX
+		"\x5E"                     // POP ESI
+		"\xC2\x08\x00";            // RET 0x8
 	fwrite(writeBuf, 1, sizeof writeBuf - 1, file);
 	CrossPlatformCout << "Overwrote execIsAsyncLoading() function successfully!\n";
 	
