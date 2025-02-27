@@ -799,15 +799,15 @@ void meatOfTheProgram() {
 		"\x8B\x01"                 // MOV EAX,dword [ECX]  ; The first value could either be a TArray (local array<SpawnPlayerInfo> Info) or a BOOL (local bool press1P). TArray's first element is a pointer
 		"\x39\xD0"                 // CMP EAX,EDX
 		"\x77\x04"                 // JA returnZero  ; > 1? Probably it's a TArray. In this part of unrealscript (UpdateWaitCharaLoad unrealscript function) we want to report that we're not async loading
-		"\x74\x08"                 // JZ doProperCheck  ; if it's 1, that means it's the local bool press1P variable and it is TRUE. In this part of the script, we want to check if loading is actually finished
-		"\xEB\x16"                 // JMP second  ; check the other variable, press2P
+		"\x74\x06"                 // JZ doProperCheck  ; if it's 1, that means it's the local bool press1P variable and it is TRUE. In this part of the script, we want to check if loading is actually finished
+		"\xEB\x14"                 // JMP second  ; check the other variable, press2P
 		// returnZero:
 		"\x31\xC0"                 // XOR EAX,EAX
-		"\xEB\x1B"                 // JMP return
+		"\xEB\x19"                 // JMP return
 		// doProperCheck:
 		"\x8B\x86\xD0\x01\x00\x00" // MOV EAX,dword [ESI+0x1d0]  ; this object is a REDGfxMoviePlayer_MenuInterlude and 0x1d0 is an int VSLoadPercent, from 0 to 100
 		"\x83\xF8\x64"             // CMP EAX,0x64  ; compare to 100
-		"\x74\xEF"                 // JZ returnZero  ; if it's fully loaded, we want to report that we're not async loading, which will let the user's mash skip the loading screen
+		"\x74\xF1"                 // JZ returnZero  ; if it's fully loaded, we want to report that we're not async loading, which will let the user's mash skip the loading screen
 		"\x31\xC0"                 // XOR EAX,EAX  ; report that we're async loading (EAX 1). This means that the user cannot skip the loading screen despite them mashing
 		"\x40"                     // INC EAX
 		"\xEB\x09"                 // JMP return
