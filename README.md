@@ -52,3 +52,9 @@ Interacting with the graphics card was (and probably still is) believed to be sl
 ### Why is the patcher code so giant, do you not need to replace just two bytes?
 
 There was a problem where you could mash to skip the loading screen before it has finished loading, which lead to a crash. If you mashed after it has finished loading, then it wouldn't crash. A fix was needed to exclude the possibility of a crash, and so the patcher takes care of that as well.
+
+## Why does Windows Defender think this is a virus?
+
+I don't know. All this does is patch the .EXE file you have yourself selected, after a manual confirmation. I gave up trying to research this after a freshly compiled Hello World from Visual Studio was flagged as a potentially unsafe download by Google Chrome. Nothing helps: adding a VERSIONINFO, signing the patcher with a self-signed certificate, putting all of Shakespeare works into it - nothing.
+
+The best you can do is add this to exceptions. If you're still worried this might be a virus: read through and compile this project yourself, the code is open.
