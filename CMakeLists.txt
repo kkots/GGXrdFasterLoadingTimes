@@ -8,7 +8,7 @@ target_compile_definitions(GGXrdFasterLoadingTimes PRIVATE "-DFOR_LINUX=\"1\"")
 # compile instructions
 # cd into the directory with the CMakeLists.txt
 #
-# cmake . -DCMAKE_BUILD_TYPE=Release ..
+# cmake -DCMAKE_BUILD_TYPE=Release .
 # make
 #
 # The executable named "GGXrdFasterLoadingTimes" appears in the current directory.

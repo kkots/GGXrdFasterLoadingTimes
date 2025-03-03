@@ -61,4 +61,4 @@ The best you can do is add this to exceptions. If you're still worried this migh
 
 ## Changelog
 
-- 2025 March 3: Fixed a crash when mashing through the loading screen in offline versus human vs human.
+- 2025 March 3: Fixed a crash when mashing through the loading screen in offline versus human vs human. To apply the patch again you need to find an unpatched backup copy of GuiltyGearXrd.exe and apply the new patcher to it.
