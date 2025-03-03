@@ -793,10 +793,10 @@ void meatOfTheProgram() {
 		"\x56"                     // PUSH ESI
 		"\x89\xCE"                 // MOV ESI,ECX
 		"\xFF\x40\x18"             // INC dword [EAX+0x18]  ; increment stack->Code
-		"\x8B\x48\x1C"             // MOV ECX,dword [EAX+0x1c]  ; this is stack->Locals, it stores local variables of the unrealscript
+		"\x8B\x48\x1C"             // MOV ECX,dword [EAX+0x1c]  ; this is stack->Locals, it stores function arguments and local variables of the unrealscript
 		"\x31\xD2"                 // XOR EDX,EDX
 		"\x42"                     // INC EDX
-		"\x8B\x01"                 // MOV EAX,dword [ECX]  ; The first value could either be a TArray (local array<SpawnPlayerInfo> Info) or a BOOL (local bool press1P). TArray's first element is a pointer
+		"\x8B\x41\x04"             // MOV EAX,dword [ECX+0x4]  ; The first value is always bTrigger, a function argument. The second could either be a TArray (local array<SpawnPlayerInfo> Info) or a BOOL (local bool press1P). TArray's first element is a pointer
 		"\x39\xD0"                 // CMP EAX,EDX
 		"\x77\x04"                 // JA returnZero  ; > 1? Probably it's a TArray. In this part of unrealscript (UpdateWaitCharaLoad unrealscript function) we want to report that we're not async loading
 		"\x74\x06"                 // JZ doProperCheck  ; if it's 1, that means it's the local bool press1P variable and it is TRUE. In this part of the script, we want to check if loading is actually finished
@@ -812,7 +812,7 @@ void meatOfTheProgram() {
 		"\x40"                     // INC EAX
 		"\xEB\x09"                 // JMP return
 		// second:
-		"\x8B\x41\x04"             // MOV EAX,dword [ECX+0x4]  ; check local bool press2P
+		"\x8B\x41\x08"             // MOV EAX,dword [ECX+0x8]  ; check local bool press2P
 		"\x39\xD0"                 // CMP EAX,EDX
 		"\x74\xE9"                 // JZ doProperCheck
 		"\x31\xC0"                 // XOR EAX,EAX
