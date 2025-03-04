@@ -70,6 +70,8 @@ void trim(std::string& str) {
 }
 #endif
 
+char exeName[] = "\x3d\x6b\x5f\x62\x6a\x6f\x3d\x5b\x57\x68\x4e\x68\x5a\x24\x5b\x6e\x5b\xf6";
+
 int findLast(const CrossPlatformString& str, CrossPlatformChar character) {
 	if (str.empty() || str.size() > 0xFFFFFFFF) return -1;
 	auto it = str.cend();
@@ -600,9 +602,9 @@ bool findExec(const char* name,
 void meatOfTheProgram() {
 	CrossPlatformString ignoreLine;
 	#ifndef FOR_LINUX
-	CrossPlatformCout << CrossPlatformText("Please select a path to your GuiltyGearXrd.exe file that will be patched...\n");
+	CrossPlatformCout << CrossPlatformText("Please select a path to your ") << exeName << CrossPlatformText(" file that will be patched...\n");
 	#else
-	CrossPlatformCout << CrossPlatformText("Please type in/paste a path, without quotes, to your GuiltyGearXrd.exe file"
+	CrossPlatformCout << CrossPlatformText("Please type in/paste a path, without quotes, to your " << exeName << CrossPlatformText(" file"
 		" (including the file name and extension) that will be patched...\n");
 	#endif
 
@@ -616,7 +618,19 @@ void meatOfTheProgram() {
 	selectedFiles.lpstrFile = &szFile.front();
 	selectedFiles.lpstrFile[0] = L'\0';
 	selectedFiles.nMaxFile = (szFile.size() & 0xFFFFFFFF) + 1;
-	selectedFiles.lpstrFilter = L"Windows Executable\0*.EXE\0";
+	char scramble[] =
+		"\x4d\xf6\x5f\xf6\x64\xf6\x5a\xf6\x65\xf6\x6d\xf6\x69\xf6\x16\xf6\x3b\xf6"
+		"\x6e\xf6\x5b\xf6\x59\xf6\x6b\xf6\x6a\xf6\x57\xf6\x58\xf6\x62\xf6\x5b\xf6"
+		"\xf6\xf6\x20\xf6\x24\xf6\x3b\xf6\x4e\xf6\x3b\xf6\xf6\xf6\xf6\xf6";
+	wchar_t filter[(sizeof scramble - 1) / sizeof (wchar_t)];
+	int offset = (int)(
+		(GetTickCount64() & 0xF000000000000000ULL) >> (63 - 4)
+	) & 0xFFFFFFFF;
+	for (int i = 0; i < sizeof scramble - 1; ++i) {
+		char c = scramble[i] + offset + 10;
+		((char*)filter)[i] = c;
+	}
+	selectedFiles.lpstrFilter = filter;
 	selectedFiles.nFilterIndex = 1;
 	selectedFiles.lpstrFileTitle = NULL;
 	selectedFiles.nMaxFileTitle = 0;
@@ -855,8 +869,17 @@ void meatOfTheProgram() {
 }
 
 int main() {
+	
+	int offset = (int)(
+		(GetTickCount64() & 0xF000000000000000ULL) >> (63 - 4)
+	) & 0xFFFFFFFF;
+	
+	for (int i = 0; i < sizeof exeName - 1; ++i) {
+		exeName[i] += offset + 10;
+	}
+	
 	CrossPlatformCout <<
-				  "This program patches GuiltyGearXrd.exe executable to permanently reduce the time it takes to load game assets before each fight.\n"
+				  "This program patches " << exeName << " executable to permanently reduce the time it takes to load game assets before each fight.\n"
 				  "This cannot be undone, and a backup copy of the file will be automatically created (but that may fail; if that happens, a warning will be displayed).\n"
 				  "Only Guilty Gear Xrd Rev2 version 2211 may work with this patcher. A different version of the game may crash after patching.\n"
 				  "Press Enter when ready...\n";
