@@ -1,10 +1,13 @@
-
+#include "pch.h"
 // The purpose of this program is to patch GuiltyGearXrd.exe to speed up the
 // loading of assets on pre-battle loading screens
 #include <iostream>
 #include <string>
 #ifndef FOR_LINUX
-#include <Windows.h>
+#include "resource.h"
+#include "ConsoleEmulator.h"
+#include "InjectorCommonOut.h"
+#include <commdlg.h>
 #else
 #include <fstream>
 #include <string.h>
@@ -12,22 +15,24 @@
 #include <stdint.h>
 #endif
 #include <vector>
+#include "Version.h"
 
 
 #ifndef FOR_LINUX
+InjectorCommonOut outputObject;
 #define CrossPlatformString std::wstring
 #define CrossPlatformChar wchar_t
 #define CrossPlatformPerror _wperror
 #define CrossPlatformText(txt) L##txt
-#define CrossPlatformCin std::wcin
-#define CrossPlatformCout std::wcout
+#define CrossPlatformCout outputObject
 #define CrossPlatformNumberToString std::to_wstring
+extern void GetLine(std::wstring& line);
 #else
+void GetLine(std::string& line) { std::getline(std::cin, line); }
 #define CrossPlatformString std::string
 #define CrossPlatformChar char
 #define CrossPlatformPerror perror
 #define CrossPlatformText(txt) txt
-#define CrossPlatformCin std::cin
 #define CrossPlatformCout std::cout
 #define CrossPlatformNumberToString std::to_string
 
@@ -414,7 +419,15 @@ CrossPlatformString generateBackupPath(const CrossPlatformString& parentDir, con
 
 bool crossPlatformOpenFile(FILE** file, const CrossPlatformString& path) {
 	#ifndef FOR_LINUX
-	if (_wfopen_s(file, path.c_str(), CrossPlatformText("r+b")) || !*file) {
+	errno_t errorCode = _wfopen_s(file, path.c_str(), CrossPlatformText("r+b"));
+	if (errorCode != 0 || !*file) {
+		if (errorCode != 0) {
+			wchar_t buf[1024];
+			_wcserror_s(buf, errorCode);
+			CrossPlatformCout << L"Failed to open file: " << buf << L'\n';
+		} else {
+			CrossPlatformCout << L"Failed to open file.\n";
+		}
 		if (*file) {
 			fclose(*file);
 		}
@@ -423,7 +436,10 @@ bool crossPlatformOpenFile(FILE** file, const CrossPlatformString& path) {
 	return true;
 	#else
 	*file = fopen(path.c_str(), "r+b");
-	if (!*file) return false;
+	if (!*file) {
+		perror("Failed to open file");
+		return false;
+	}
 	return true;
 	#endif
 }
@@ -604,7 +620,7 @@ void meatOfTheProgram() {
 	#ifndef FOR_LINUX
 	CrossPlatformCout << CrossPlatformText("Please select a path to your ") << exeName << CrossPlatformText(" file that will be patched...\n");
 	#else
-	CrossPlatformCout << CrossPlatformText("Please type in/paste a path, without quotes, to your " << exeName << CrossPlatformText(" file"
+	CrossPlatformCout << CrossPlatformText("Please type in/paste a path, without quotes, to your ") << exeName << CrossPlatformText(" file"
 		" (including the file name and extension) that will be patched...\n");
 	#endif
 
@@ -689,10 +705,7 @@ void meatOfTheProgram() {
 	} fileCloser;
 	
 	FILE* file = nullptr;
-	if (!crossPlatformOpenFile(&file, szFile)) {
-		CrossPlatformPerror(CrossPlatformText("Failed to open file"));
-		return;
-	}
+	if (!crossPlatformOpenFile(&file, szFile)) return;
 	fileCloser.file = file;
 
 	std::vector<char> wholeFile;
@@ -868,11 +881,19 @@ void meatOfTheProgram() {
 	// file gets closed automatically by fileCloser
 }
 
+#ifndef FOR_LINUX
+int patcherMain() {
+#else
 int main() {
+#endif
 	
+	#ifndef FOR_LINUX
 	int offset = (int)(
 		(GetTickCount64() & 0xF000000000000000ULL) >> (63 - 4)
 	) & 0xFFFFFFFF;
+	#else
+	int offset = 0;
+	#endif
 	
 	for (int i = 0; i < sizeof exeName - 1; ++i) {
 		exeName[i] += offset + 10;
@@ -885,11 +906,42 @@ int main() {
 				  "Press Enter when ready...\n";
 	
 	CrossPlatformString ignoreLine;
-	std::getline(CrossPlatformCin, ignoreLine);
+	GetLine(ignoreLine);
 
 	meatOfTheProgram();
 
 	CrossPlatformCout << "Press Enter to exit...\n";
-	std::getline(CrossPlatformCin, ignoreLine);
+	GetLine(ignoreLine);
 	return 0;
 }
+
+#ifndef FOR_LINUX
+bool forceAllowed = false;
+UINT windowAppTitleResourceId = IDS_APP_TITLE;
+UINT windowClassNameResourceId = IDC_GGXRDFASTERLOADINGTIMES;
+LPCWSTR windowIconId = MAKEINTRESOURCEW(IDI_GGXRDFASTERLOADINGTIMES);
+LPCWSTR windowMenuName = MAKEINTRESOURCEW(IDC_GGXRDFASTERLOADINGTIMES);
+LPCWSTR windowAcceleratorId = MAKEINTRESOURCEW(IDC_GGXRDFASTERLOADINGTIMES);
+
+bool parseArgs(int argc, LPWSTR* argv, int* exitCode) {
+	for (int i = 0; i < argc; ++i) {
+		if (_wcsicmp(argv[i], L"/?") == 0
+				|| _wcsicmp(argv[i], L"--help") == 0
+				|| _wcsicmp(argv[i], L"-help") == 0) {
+			MessageBoxA(NULL,
+				"Patcher for improving loading times for Guilty Gear Xrd Rev2 version 2211.",
+				"GGXrdFasterLoadingTimes " VERSION,
+				MB_OK);
+			*exitCode = 0;
+			return false;
+		}
+	}
+	return true;
+}
+
+unsigned long __stdcall taskThreadProc(LPVOID unused) {
+	unsigned long result = patcherMain();
+	PostMessageW(mainWindow, WM_TASK_ENDED, 0, 0);
+	return result;
+}
+#endif

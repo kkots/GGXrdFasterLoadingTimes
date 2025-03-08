@@ -2,7 +2,8 @@
 cmake_minimum_required(VERSION "${MIN_VER_CMAKE}" FATAL_ERROR)
 project(GGXrdFasterLoadingTimes)
 set(CMAKE_CXX_STANDARD 14)
-add_executable(GGXrdFasterLoadingTimes GGXrdFasterLoadingTimes.cpp)
+add_executable(GGXrdFasterLoadingTimes
+	GGXrdFasterLoadingTimes.cpp)
 target_compile_definitions(GGXrdFasterLoadingTimes PRIVATE "-DFOR_LINUX=\"1\"")
 
 # compile instructions
