@@ -5,7 +5,7 @@
 Speed comparison (on my PC):
 <https://youtu.be/dV8kicV9BhA>
 
-For Guilty Gear Xrd Rev2 version 2211 (2211 - the number displayed on the main manu in the lower right corner after launching the game). Makes the pre-battle loading screen load game contents synchronously, instead of asynchronously, therefore speeding up the loading times significantly on faster machines with fast hard disk read speeds (like SSD). Works as of 24'th February 2025.
+For Guilty Gear Xrd Rev2 version 2211 (2211 - the number displayed on the main menu in the lower right corner after launching the game). Makes the pre-battle loading screen load game contents synchronously, instead of asynchronously, therefore speeding up the loading times significantly on faster machines with fast hard disk read speeds (like SSD). Works as of 24'th February 2025.
 
 Works as a patcher. You only need to apply the patch once, and the game will work with the changes forever.
 
@@ -51,16 +51,17 @@ Interacting with the graphics card was (and probably still is) believed to be sl
 
 ### Why is the patcher code so giant, do you not need to replace just two bytes?
 
-There was a problem where you could mash to skip the loading screen before it has finished loading, which lead to a crash. If you mashed after it has finished loading, then it wouldn't crash. A fix was needed to exclude the possibility of a crash, and so the patcher takes care of that as well.
+There was a problem where you could mash to skip the loading screen before it has finished loading, which lead to a crash. If you mashed after it has finished loading, then it wouldn't crash. A fix was needed to exclude the possibility of a crash, and so the patcher takes care of that as well. Additionally, as of Version 1.4 of this mod, there is an extra option to automatically mash on loading screens to skip them without manual input, and this took extra code to implement.
 
 ## Why does Windows Defender think this is a virus?
 
 I don't know. All this does is patch the .EXE file you have yourself selected, after a manual confirmation. I gave up trying to research this after a freshly compiled Hello World from Visual Studio was flagged as a potentially unsafe download by Google Chrome. Nothing helps: adding a VERSIONINFO, signing the patcher with a self-signed certificate, putting all of Shakespeare works into it - nothing.
 
-The best you can do is add this to exceptions. If you're still worried this might be a virus: read through and compile this project yourself, the code is open.
+The best you can do is add this to exceptions. If you're still worried this might be a virus: read through and compile this project yourself, the code is open. You might need a Visual Studio on Windows, as this project was created in that environment. On Linux the project is compiled using CMake. See CMakeLists.txt for details (Linux only, not used for Visual Studio).
 
 ## Changelog
 
 - 2025 March 3: Fixed a crash when mashing through the loading screen in offline versus human vs human. To apply the patch again you need to find an unpatched backup copy of GuiltyGearXrd.exe and apply the new patcher to it.
 - 2025 March 4: Version 1.2: Signed the executable, so that it is less likely that it gets flagged by Windows Defender as a virus.
 - 2025 March 8: Version 1.3: Changed the type of the app from console to window, so that it gets flagged less often as a virus by Windows Defender. Linux version of the patcher unchanged.
+- 2025 July 25: Version 1.4: Added an option to automatically mash through the loading screens once they've finished loading.

@@ -10,6 +10,7 @@ name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
 processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 // 3) Add a script that sits in the Debug/Release folders, checks if each executable or .dll file is signed, and signs it if it isn't.
 // 6) Transition patcher to window mode, will probably have to do something very similar.
+#include "YesNoCancel.h"
 
 #define MAX_LOADSTRING 100
 
@@ -27,6 +28,7 @@ bool anyKeyPressed = false;
 int nCmdShowToUse = 0;
 
 extern void GetLine(std::wstring& line);
+extern void AskYesNoCancel(const char* prompt, YesNoCancel* result);
 void OutputStringA(const char* text);
 void OutputStringW(const wchar_t* text);
 void pressAnyKeyBegin();
@@ -40,6 +42,7 @@ void OutputStringWImpl(const wchar_t* text);
 void onTimer();
 LRESULT __stdcall TextEditSubclass(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
 void onGetLine(WPARAM wParam);
+void onAskYesNoCancel(WPARAM wParam, LPARAM lParam);
 int countChar(const char* text, int chr);
 void onCommand(WPARAM wParam, LPARAM lParam, LRESULT* lResult);
 void onKeyDown(WPARAM wParam, LRESULT* lResult, bool handleEventOnYourOwn);
@@ -169,6 +172,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 			return DefWindowProcW(hWnd, message, wParam, lParam);
 		case WM_GET_LINE:
 			onGetLine(wParam);
+			break;
+		case WM_ASK_YES_NO_CANCEL:
+			onAskYesNoCancel(wParam, lParam);
 			break;
 		case WM_TASK_ENDED:
 			DestroyWindow(hWnd);
@@ -410,6 +416,11 @@ void GetLine(std::wstring& line) {
 	WaitForSingleObject(eventToInjectorThread, INFINITE);
 }
 
+void AskYesNoCancel(const char* prompt, YesNoCancel* result) {
+	PostMessageW(mainWindow, WM_ASK_YES_NO_CANCEL, (WPARAM)prompt, (LPARAM)result);
+	WaitForSingleObject(eventToInjectorThread, INFINITE);
+}
+
 LRESULT __stdcall TextEditSubclass(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
 	bool wasNotNull = getLineLine != nullptr;
 	if (hWnd == textEdit && uIdSubclass == 1 && uMsg == WM_CHAR) {
@@ -428,6 +439,23 @@ void onGetLine(WPARAM wParam) {
 	getLineLine = (std::wstring*)wParam;
 	SendMessageW(textEdit, EM_SETREADONLY, FALSE, 0);
 	SetFocus(textEdit);
+}
+
+void onAskYesNoCancel(WPARAM wParam, LPARAM lParam) {
+	const char* prompt = (const char*)wParam;
+	YesNoCancel* result = (YesNoCancel*)lParam;
+	int msgBoxResult = MessageBoxA(mainWindow, prompt, "Question", MB_YESNOCANCEL);
+	if (msgBoxResult == IDYES) {
+		*result = YesNoCancel_Yes;
+	} else if (msgBoxResult == IDNO) {
+		*result = YesNoCancel_No;
+	} else if (msgBoxResult == IDCANCEL) {
+		*result = YesNoCancel_Cancel;
+	} else {
+		MessageBoxA(mainWindow, "Couldn't understand what choice you made. Selecting 'Cancel'.", "Error", MB_OK);
+		*result = YesNoCancel_Cancel;
+	}
+	SetEvent(eventToInjectorThread);
 }
 
 void pressAnyKeyBegin() {

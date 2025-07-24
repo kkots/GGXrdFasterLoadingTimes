@@ -185,6 +185,7 @@
     <ClInclude Include="Resource.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="Version.h" />
+    <ClInclude Include="YesNoCancel.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ConsoleEmulator.cpp" />
