@@ -5,7 +5,9 @@
 Speed comparison (on my PC):
 <https://youtu.be/dV8kicV9BhA>
 
-For Guilty Gear Xrd Rev2 version 2211 (2211 - the number displayed on the main menu in the lower right corner after launching the game). Makes the pre-battle loading screen load game contents synchronously, instead of asynchronously, therefore speeding up the loading times significantly on faster machines with fast hard disk read speeds (like SSD). Works as of 24'th February 2025.
+For Guilty Gear Xrd Rev2 version 2211 (2211 - the number displayed on the main menu in the lower right corner after launching the game). Makes the pre-battle loading screen load game contents synchronously, instead of asynchronously, therefore speeding up the loading times significantly on faster machines with fast hard disk read speeds (like SSD). Works as of 14'th March 2026.
+
+Also speeds up the initial loading of the game.
 
 Works as a patcher. You only need to apply the patch once, and the game will work with the changes forever.
 
@@ -31,11 +33,13 @@ Thanks to WorseThanYou (@worsety) for consulting and ideas on what to do!
 
 ## How it works
 
-The loading in Xrd works asynchronously, meaning it performs loading on the main thread. Every frame, the main thread performs loading for a little bit, until it runs out of time allotted for doing so, and then, for the remainder of the frame, the main thread animates the loading screen. This repeats on the next frame, and so on, until loading finishes.
+**Regarding the pre-battle loading**, in Xrd it works asynchronously, meaning it performs loading on the main thread. Every frame, the main thread performs loading for a little bit, until it runs out of time allotted for doing so, and then, for the remainder of the frame, the main thread animates the loading screen. This repeats on the next frame, and so on, until loading finishes.
 
 The reason this is slow is because the developers of Unreal Engine 3 have placed a 0.003 or 0.005 (hard to tell) seconds limit on the amount of time the game is allowed to perform loading each frame. This is very, very little, and on modern computers the main thread ends up doing mostly nothing every frame.
 
 Our patch increases that limit to infinity, so now the main thread can spend as much time as it needs per frame to do the loading. As a result, the loading screen animations suffer. But who cares, since it's loading so fast now, right?
+
+**Regarding the initial game startup**, developers at ArcSys have deliberately inserted pauses between the loading messages and on the loading messages themselves, so that each message can be read clearly. The "Verifying downloadable content." in particular does nothing and just waits for 60 frames. All we do is remove the wait times, and we could probably shorten the loading even more by removing the appearing and disappearing animations on each message and by doing something about the "Loading most recent information." (that one seems to be doing something through Steam API, and doesn't seem to have straight up empty waits).
 
 ### But it has a graphics rendering thread, why does it not use it?
 
@@ -65,3 +69,4 @@ The best you can do is add this to exceptions. If you're still worried this migh
 - 2025 March 4: Version 1.2: Signed the executable, so that it is less likely that it gets flagged by Windows Defender as a virus.
 - 2025 March 8: Version 1.3: Changed the type of the app from console to window, so that it gets flagged less often as a virus by Windows Defender. Linux version of the patcher unchanged.
 - 2025 July 25: Version 1.4: Added an option to automatically mash through the loading screens once they've finished loading.
+- 2026 March 14: Version 1.5: Added more patching that speeds up the game's loading startup.

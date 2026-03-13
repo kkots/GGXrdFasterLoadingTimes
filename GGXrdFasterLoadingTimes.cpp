@@ -929,7 +929,7 @@ void meatOfTheProgram() {
 	AskYesNoCancel(askPrompt, &askResult);
 	
 	if (askResult == YesNoCancel_Yes) {
-		CrossPlatformCout << "'Yes' selected. Not implemented yet, patching will continue as if 'No' is selected.\n";
+		CrossPlatformCout << "'Yes' selected.\n";
 	} else if (askResult == YesNoCancel_No) {
 		CrossPlatformCout << "'No' selected.\n";
 	} else if (askResult == YesNoCancel_Cancel) {
@@ -1321,6 +1321,60 @@ void meatOfTheProgram() {
 		char twoNops[2] = { '\x90', '\x90' };
 		fwrite(twoNops, 1, 2, file);
 		CrossPlatformCout << "Deleted 'if (bBlocking != 0) {' instruction in LoadAssets successfully!\n";
+	}
+	
+	int menuTimewasteCounterUsage = sigscan(textBegin, textEnd,
+	    "\x75\x20\x6a\x64\xe8\x00\x00\x00\x00\x83\xc4\x04\x85\xc0\x74\x12\x8b\x0d\x00\x00\x00\x00\x51\x8b\xce\xe8\x00\x00\x00\x00\x85\xc0\x74\x38",
+	    "xxxxx????xxxxxxxxx????xxxx????xxxx");
+	if (menuTimewasteCounterUsage == -1) {
+	    CrossPlatformCout << "Couldn't find the usage of the variable that holds the amount of time needed to waste for you on each initial game loading message.\n";
+	} else {
+	    DWORD menuTimewasteCounterVa = *(DWORD*)(textBegin + menuTimewasteCounterUsage + 18);
+		CrossPlatformCout << "Found the variable that holds the amount of time needed to waste for you on each initial game loading message"
+		    " at va:0x" << std::hex << menuTimewasteCounterVa << std::dec << "\n";
+		int menuTimewasteCounterRaw = vaToRaw(sections, menuTimewasteCounterVa);
+		int currentVal = *(int*)(wholeFileBegin + menuTimewasteCounterRaw);
+		if (currentVal == 0x5a) {
+		    fseek(file, menuTimewasteCounterRaw, SEEK_SET);
+		    int newVal = 0;
+		    fwrite(&newVal, 4, 1, file);
+		    CrossPlatformCout << "Overwrote the amount of time to waste on each loading message with 0.\n";
+		} else {
+		    CrossPlatformCout << "The amount of time to waste on each loading message is already set by someone to "
+		        << currentVal << ", leaving it alone...\n";
+		}
+	}
+	
+	int dlcTimewasteUsage = sigscan(textBegin, textEnd,
+	    "\x6a\x00\x6a\x00\x68\xf7\x00\x00\x00\x6a\x03\x68\x00\x00\x00\x00\x6a\x00\x6a\x61\xe8\x00\x00\x00\x00\x83\xc4\x1c\xc7\x05\x00\x00\x00\x00\x3c\x00\x00\x00",
+	    "xxxxxxxxxxxx????xxxxx????xxxxx????xxxx");
+	if (dlcTimewasteUsage == -1) {
+	    CrossPlatformCout << "Couldn't find the usage of a variable that just wastes your time on the 'Verifying downloadable content.' message.\n";
+	} else {
+	    DWORD dlcTimewasteVa = *(DWORD*)(textBegin + dlcTimewasteUsage + 30);
+	    CrossPlatformCout << "Found the variable that just wastes your time on the 'Verifying downloadable content.' message at va:0x"
+	        << std::hex << dlcTimewasteVa << std::dec << '\n';
+	    char* searchStart = textBegin;
+	    char searchNeedle[] = "\xc7\x05\x10\x05\xe4\x01\x3c\x00\x00\x00";
+	    memcpy(searchNeedle + 2, &dlcTimewasteVa, 4);
+	    bool foundAtLeastOne = false;
+	    const int zerosToWrite = 0;
+	    while (textEnd - searchStart >= 10) {
+	        int nextFind = sigscan(searchStart, textEnd, searchNeedle, "xxxxxxxxxx");
+	        if (nextFind == -1) {
+	            break;
+	        }
+	        int foundFileOffset = nextFind + ((uintptr_t)(searchStart - wholeFileBegin) & 0xFFFFFFFF);
+	        fseek(file, foundFileOffset + 6, SEEK_SET);
+	        fwrite(&zerosToWrite, 4, 1, file);
+	        CrossPlatformCout << "Overwrote a usage of the variable that just wastes your time on the 'Verifying downloadable content.' message at va:0x"
+	            << std::hex << rawToVa(sections, foundFileOffset) << std::dec << '\n';
+	        foundAtLeastOne = true;
+	        searchStart += nextFind + 10;
+	    }
+	    if (!foundAtLeastOne) {
+	        CrossPlatformCout << "Couldn't find any uses of the variable that just wastes your time on the 'Verifying downloadable content.' message.\n";
+	    }
 	}
 	
 	CrossPlatformCout << "Patch successful!\n";
