@@ -69,4 +69,4 @@ The best you can do is add this to exceptions. If you're still worried this migh
 - 2025 March 4: Version 1.2: Signed the executable, so that it is less likely that it gets flagged by Windows Defender as a virus.
 - 2025 March 8: Version 1.3: Changed the type of the app from console to window, so that it gets flagged less often as a virus by Windows Defender. Linux version of the patcher unchanged.
 - 2025 July 25: Version 1.4: Added an option to automatically mash through the loading screens once they've finished loading.
-- 2026 March 14: Version 1.5: Added more patching that speeds up the game's loading startup.
+- 2026 March 14: Version 1.5: Added more patching that speeds up the game's loading on startup.
