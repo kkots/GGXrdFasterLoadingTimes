@@ -34,6 +34,7 @@
 #define WM_PRESS_ANY_KEY_END WM_USER + 6
 #define WM_IS_ANY_KEY_PRESSED WM_USER + 7
 #define WM_ASK_YES_NO_CANCEL WM_USER + 8
+#define WM_ASK_CLARIFY WM_USER + 9
 
 // You will need these to implement needed functions:
 extern HWND mainWindow;

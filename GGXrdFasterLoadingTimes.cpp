@@ -8,11 +8,15 @@
 #include "ConsoleEmulator.h"
 #include "InjectorCommonOut.h"
 #include <commdlg.h>
+#include <io.h>     // for _get_osfhandle
 #else
 #include <fstream>
 #include <string.h>
 #include <sys/stat.h>
 #include <stdint.h>
+#include <climits>
+#include <unistd.h>
+#include <sys/types.h>
 #endif
 #include <vector>
 #include "Version.h"
@@ -27,6 +31,9 @@ InjectorCommonOut outputObject;
 #define CrossPlatformText(txt) L##txt
 #define CrossPlatformCout outputObject
 #define CrossPlatformNumberToString std::to_wstring
+#define CrossPlatformStringCompareCaseInsensitive _stricmp
+#define CrossPlatformPathCompare wcscmp
+#define SPRINTF_NARROW sprintf_s
 extern void GetLine(std::wstring& line);
 extern void AskYesNoCancel(const char* prompt, YesNoCancel* result);
 #else
@@ -54,23 +61,181 @@ void AskYesNoCancel(const char* prompt, YesNoCancel* result) {
 #define CrossPlatformText(txt) txt
 #define CrossPlatformCout std::cout
 #define CrossPlatformNumberToString std::to_string
+#define CrossPlatformStringCompareCaseInsensitive stricmp
+#define CrossPlatformPathCompare strcmp
+#define SPRINTF_NARROW sprintf
 
+int stricmp(const char* left, const char* right) {
+	while (true) {
+		char leftLower = tolower(*left);
+		char rightLower = tolower(*right);
+		if (leftLower == rightLower) {
+			if (leftLower == 0) return 0;
+			++left;
+			++right;
+			continue;
+		}
+		return leftLower - rightLower;
+	}
+}
+
+typedef unsigned char BYTE, *PBYTE;
+typedef int LONG;
+typedef unsigned short WORD;
 typedef unsigned int DWORD;
 
 // from winnt.h
-//
-// Based relocation types.
-//
+#define IMAGE_NUMBEROF_DIRECTORY_ENTRIES    16
 
-#define IMAGE_REL_BASED_ABSOLUTE              0
-#define IMAGE_REL_BASED_HIGH                  1
-#define IMAGE_REL_BASED_LOW                   2
-#define IMAGE_REL_BASED_HIGHLOW               3
-#define IMAGE_REL_BASED_HIGHADJ               4
-#define IMAGE_REL_BASED_DIR64                 10
-#define sprintf_s sprintf
+typedef struct _IMAGE_DOS_HEADER {      // DOS .EXE header
+    WORD   e_magic;                     // Magic number
+    WORD   e_cblp;                      // Bytes on last page of file
+    WORD   e_cp;                        // Pages in file
+    WORD   e_crlc;                      // Relocations
+    WORD   e_cparhdr;                   // Size of header in paragraphs
+    WORD   e_minalloc;                  // Minimum extra paragraphs needed
+    WORD   e_maxalloc;                  // Maximum extra paragraphs needed
+    WORD   e_ss;                        // Initial (relative) SS value
+    WORD   e_sp;                        // Initial SP value
+    WORD   e_csum;                      // Checksum
+    WORD   e_ip;                        // Initial IP value
+    WORD   e_cs;                        // Initial (relative) CS value
+    WORD   e_lfarlc;                    // File address of relocation table
+    WORD   e_ovno;                      // Overlay number
+    WORD   e_res[4];                    // Reserved words
+    WORD   e_oemid;                     // OEM identifier (for e_oeminfo)
+    WORD   e_oeminfo;                   // OEM information; e_oemid specific
+    WORD   e_res2[10];                  // Reserved words
+    LONG   e_lfanew;                    // File address of new exe header
+  } IMAGE_DOS_HEADER, *PIMAGE_DOS_HEADER;
+  
+typedef struct _IMAGE_DATA_DIRECTORY {
+    DWORD   VirtualAddress;
+    DWORD   Size;
+} IMAGE_DATA_DIRECTORY, *PIMAGE_DATA_DIRECTORY;
 
+typedef struct _IMAGE_OPTIONAL_HEADER {
+    //
+    // Standard fields.
+    //
+
+    WORD    Magic;
+    BYTE    MajorLinkerVersion;
+    BYTE    MinorLinkerVersion;
+    DWORD   SizeOfCode;
+    DWORD   SizeOfInitializedData;
+    DWORD   SizeOfUninitializedData;
+    DWORD   AddressOfEntryPoint;
+    DWORD   BaseOfCode;
+    DWORD   BaseOfData;
+
+    //
+    // NT additional fields.
+    //
+
+    DWORD   ImageBase;
+    DWORD   SectionAlignment;
+    DWORD   FileAlignment;
+    WORD    MajorOperatingSystemVersion;
+    WORD    MinorOperatingSystemVersion;
+    WORD    MajorImageVersion;
+    WORD    MinorImageVersion;
+    WORD    MajorSubsystemVersion;
+    WORD    MinorSubsystemVersion;
+    DWORD   Win32VersionValue;
+    DWORD   SizeOfImage;
+    DWORD   SizeOfHeaders;
+    DWORD   CheckSum;
+    WORD    Subsystem;
+    WORD    DllCharacteristics;
+    DWORD   SizeOfStackReserve;
+    DWORD   SizeOfStackCommit;
+    DWORD   SizeOfHeapReserve;
+    DWORD   SizeOfHeapCommit;
+    DWORD   LoaderFlags;
+    DWORD   NumberOfRvaAndSizes;
+    IMAGE_DATA_DIRECTORY DataDirectory[IMAGE_NUMBEROF_DIRECTORY_ENTRIES];
+} IMAGE_OPTIONAL_HEADER32, *PIMAGE_OPTIONAL_HEADER32;
+
+typedef struct _IMAGE_FILE_HEADER {
+    WORD    Machine;
+    WORD    NumberOfSections;
+    DWORD   TimeDateStamp;
+    DWORD   PointerToSymbolTable;
+    DWORD   NumberOfSymbols;
+    WORD    SizeOfOptionalHeader;
+    WORD    Characteristics;
+} IMAGE_FILE_HEADER, *PIMAGE_FILE_HEADER;
+
+typedef struct _IMAGE_NT_HEADERS {
+    DWORD Signature;
+    IMAGE_FILE_HEADER FileHeader;
+    IMAGE_OPTIONAL_HEADER32 OptionalHeader;
+} IMAGE_NT_HEADERS32, *PIMAGE_NT_HEADERS32;
+
+typedef PIMAGE_NT_HEADERS32                 PIMAGE_NT_HEADERS;
+
+typedef IMAGE_NT_HEADERS32     IMAGE_NT_HEADERS;
+
+#define IMAGE_SIZEOF_SHORT_NAME 8
+
+typedef struct _IMAGE_SECTION_HEADER {
+    BYTE    Name[IMAGE_SIZEOF_SHORT_NAME];
+    union {
+            DWORD   PhysicalAddress;
+            DWORD   VirtualSize;
+    } Misc;
+    DWORD   VirtualAddress;
+    DWORD   SizeOfRawData;
+    DWORD   PointerToRawData;
+    DWORD   PointerToRelocations;
+    DWORD   PointerToLinenumbers;
+    WORD    NumberOfRelocations;
+    WORD    NumberOfLinenumbers;
+    DWORD   Characteristics;
+} IMAGE_SECTION_HEADER, *PIMAGE_SECTION_HEADER;
+
+#define IMAGE_FIRST_SECTION( ntheader ) ((PIMAGE_SECTION_HEADER)        \
+    ((ULONG_PTR)(ntheader) +                                            \
+     FIELD_OFFSET( IMAGE_NT_HEADERS, OptionalHeader ) +                 \
+     ((ntheader))->FileHeader.SizeOfOptionalHeader   \
+    ))
+    
+#define IMAGE_REL_BASED_ABSOLUTE 0
+#define IMAGE_REL_BASED_HIGH 1
+#define IMAGE_REL_BASED_LOW 2
+#define IMAGE_REL_BASED_HIGHLOW 3
+#define IMAGE_REL_BASED_HIGHADJ 4
+#define IMAGE_REL_BASED_DIR64 10
+
+#define FIELD_OFFSET offsetof
+    
+#define IMAGE_DIRECTORY_ENTRY_IMPORT 1
+#define IMAGE_DIRECTORY_ENTRY_BASERELOC 5
+
+#define FILE_ATTRIBUTE_NORMAL 0x80
+#define OPEN_EXISTING 3
+#define FILE_SHARE_READ 1
+#define GENERIC_READ 0x80000000
+
+typedef unsigned long long ULONGLONG;
+typedef unsigned long ULONG;
+typedef uintptr_t ULONG_PTR;
 #endif
+
+#if defined( _WIN64 )
+typedef PIMAGE_NT_HEADERS32 nthdr;
+#undef IMAGE_FIRST_SECTION
+#define IMAGE_FIRST_SECTION( ntheader ) ((PIMAGE_SECTION_HEADER)        \
+    ((ULONG_PTR)(ntheader) +                                            \
+     FIELD_OFFSET( IMAGE_NT_HEADERS32, OptionalHeader ) +                 \
+     ((ntheader))->FileHeader.SizeOfOptionalHeader   \
+    ))
+#else
+typedef PIMAGE_NT_HEADERS nthdr;
+#endif
+nthdr pNtHeader = nullptr;
+BYTE* fileBase = nullptr;
 
 #ifndef FOR_LINUX
 #define PATH_SEPARATOR L'\\'
@@ -78,24 +243,30 @@ typedef unsigned int DWORD;
 #define PATH_SEPARATOR '/'
 #endif
 
+char exeName[] = "\x3d\x6b\x5f\x62\x6a\x6f\x3d\x5b\x57\x68\x4e\x68\x5a\x24\x5b\x6e\x5b\xf6";
+
 #ifdef FOR_LINUX
-void trim(std::string& str) {
-    if (str.empty()) return;
-    auto it = str.end();
-    --it;
-    while (true) {
-        if (*it > 32) break;
-        if (it == str.begin()) {
-            str.clear();
-            return;
-        }
-        --it;
-    }
-    str.resize(it - str.begin() + 1);
-}
+void copyFileLinux(const std::string& pathSource, const std::string& pathDestination);
 #endif
 
-char exeName[] = "\x3d\x6b\x5f\x62\x6a\x6f\x3d\x5b\x57\x68\x4e\x68\x5a\x24\x5b\x6e\x5b\xf6";
+bool crossPlatformFileCopy(const CrossPlatformString& dst, const CrossPlatformString& src,
+		const CrossPlatformChar* successMsg,
+		const CrossPlatformChar* errorMsg) {
+    bool success = true;
+    #ifndef FOR_LINUX
+    if (!CopyFileW(src.c_str(), dst.c_str(), true)) {
+        CrossPlatformCout << errorMsg;
+    	CrossPlatformString ignoreLine;
+    	GetLine(ignoreLine);
+    	success = false;
+    }
+    #else
+    copyFileLinux(src, dst);
+    std::cout << "Backup copy created successfully.\n";
+    #endif
+    CrossPlatformCout << successMsg;
+    return success;
+}
 
 int findLast(const CrossPlatformString& str, CrossPlatformChar character) {
 	if (str.empty() || str.size() > 0xFFFFFFFF) return -1;
@@ -143,6 +314,169 @@ bool fileExists(const CrossPlatformString& path) {
 	return false;
 	#endif
 }
+
+#ifndef FOR_LINUX
+extern HWND mainWindow;
+#endif
+
+#if defined(FOR_LINUX) || !defined(_DEBUG)
+#define byteSpecificationError
+#else
+#define byteSpecificationError { \
+    OutputDebugStringA("Wrong byte specification: "); \
+    OutputDebugStringA(byteSpecification); \
+    OutputDebugStringA("\n"); \
+	return numOfTriangularChars; \
+}
+#endif
+
+// byteSpecification is of the format "00 8f 1e ??". ?? means unknown byte.
+// Converts a "00 8f 1e ??" string into two vectors:
+// sig vector will contain bytes '00 8f 1e' for the first 3 bytes and 00 for every ?? byte.
+// sig vector will be terminated with an extra 0 byte.
+// mask vector will contain an 'x' character for every non-?? byte and a '?' character for every ?? byte.
+// mask vector will be terminated with an extra 0 byte.
+// Can additionally provide an size_t* position argument. If the byteSpecification contains a ">" character, position will store the offset of that byte.
+// If multiple ">" characters are present, position must be an array able to hold all positions, and positionLength specifies the length of the array.
+// If positionLength is 0, it is assumed the array is large enough to hold all > positions.
+// Returns the number of > characters.
+size_t byteSpecificationToSigMask(const char* byteSpecification, std::vector<char>& sig, std::vector<char>& mask, size_t* position = nullptr, size_t positionLength = 0) {
+	if (position && positionLength == 0) positionLength = UINT_MAX;
+	size_t numOfTriangularChars = 0;
+	sig.clear();
+	mask.clear();
+	unsigned long long accumulatedNibbles = 0;
+	int nibbleCount = 0;
+	bool nibblesUnknown = false;
+	const char* byteSpecificationPtr = byteSpecification;
+	bool nibbleError = false;
+	const char* nibbleSequenceStart = byteSpecification;
+	while (true) {
+		char currentChar = *byteSpecificationPtr;
+		if (currentChar == '>') {
+			if (position && numOfTriangularChars < positionLength) {
+				*position = sig.size();
+				++position;
+			}
+			++numOfTriangularChars;
+			nibbleSequenceStart = byteSpecificationPtr + 1;
+		} else if (currentChar == '(') {
+			nibbleCount = 0;
+			nibbleError = false;
+			nibblesUnknown = false;
+			accumulatedNibbles = 0;
+			if (byteSpecificationPtr <= nibbleSequenceStart) {
+				byteSpecificationError
+			}
+			const char* moduleNameEnd = byteSpecificationPtr;
+			++byteSpecificationPtr;
+			bool parseOk = true;
+			#define skipWhitespace \
+				while (*byteSpecificationPtr != '\0' && *byteSpecificationPtr <= 32) { \
+					++byteSpecificationPtr; \
+				}
+			#define checkQuestionMarks \
+				if (parseOk) { \
+					if (strncmp(byteSpecificationPtr, "??", 2) != 0) { \
+						parseOk = false; \
+					} else { \
+						byteSpecificationPtr += 2; \
+					} \
+				}
+			#define checkWhitespace \
+				if (parseOk) { \
+					if (*byteSpecificationPtr == '\0' || *byteSpecificationPtr > 32) { \
+						parseOk = false; \
+					} else { \
+						while (*byteSpecificationPtr != '\0' && *byteSpecificationPtr <= 32) { \
+							++byteSpecificationPtr; \
+						} \
+					} \
+				}
+			skipWhitespace
+			checkQuestionMarks
+			checkWhitespace
+			checkQuestionMarks
+			checkWhitespace
+			checkQuestionMarks
+			checkWhitespace
+			checkQuestionMarks
+			skipWhitespace
+			#undef skipWhitespace
+			#undef checkQuestionMarks
+			#undef checkWhitespace
+			if (*byteSpecificationPtr != ')') {
+				parseOk = false;
+			}
+			if (!parseOk) {
+				byteSpecificationError
+			}
+		} else if (currentChar != ' ' && currentChar != '\0') {
+			char currentNibble = 0;
+			if (currentChar >= '0' && currentChar <= '9' && !nibblesUnknown) {
+				currentNibble = currentChar - '0';
+			} else if (currentChar >= 'a' && currentChar <= 'f' && !nibblesUnknown) {
+				currentNibble = currentChar - 'a' + 10;
+			} else if (currentChar >= 'A' && currentChar <= 'F' && !nibblesUnknown) {
+				currentNibble = currentChar - 'A' + 10;
+			} else if (currentChar == '?' && (nibbleCount == 0 || nibblesUnknown)) {
+				nibblesUnknown = true;
+			} else {
+				nibbleError = true;
+			}
+			accumulatedNibbles = (accumulatedNibbles << 4) | currentNibble;
+			++nibbleCount;
+			if (nibbleCount > 16) {
+				nibbleError = true;
+			}
+		} else {
+			if (nibbleCount) {
+				if (nibbleError) {
+					byteSpecificationError
+				}
+				do {
+					if (!nibblesUnknown) {
+						sig.push_back(accumulatedNibbles & 0xff);
+						mask.push_back('x');
+						accumulatedNibbles >>= 8;
+					} else {
+						sig.push_back(0);
+						mask.push_back('?');
+					}
+					nibbleCount -= 2;
+				} while (nibbleCount > 0);
+				nibbleCount = 0;
+				nibblesUnknown = false;
+			}
+			if (currentChar == '\0') {
+				break;
+			}
+			nibbleSequenceStart = byteSpecificationPtr + 1;
+		}
+		++byteSpecificationPtr;
+	}
+	sig.push_back('\0');
+	mask.push_back('\0');
+	#undef byteSpecificationError
+	return numOfTriangularChars;
+}
+
+struct Sig {
+    std::vector<char> sig;
+    std::vector<char> mask;
+    std::vector<size_t> positions;
+    Sig() = default;
+    Sig(const char* byteSpecification) {
+        size_t numChar = 0;
+        for (const char* ptr = byteSpecification; *ptr != '\0'; ++ptr) {
+            if (*ptr == '>') ++numChar;
+        }
+        if (numChar) {
+            positions.resize(numChar);
+        }
+        byteSpecificationToSigMask(byteSpecification, sig, mask, positions.data(), numChar);
+    }
+};
 
 int sigscan(const char* start, const char* end, const char* sig, const char* mask) {
 	const char* startPtr = start;
@@ -280,126 +614,49 @@ DWORD followRelativeCall(DWORD callInstructionAddress, const char* callInstructi
 	return callInstructionAddress + 5 + offset;
 }
 
-struct Section {
-	std::string name;
-	
-	// RVA. Virtual address offset relative to the virtual address start of the entire .exe.
-	// So let's say the whole .exe starts at 0x400000 and RVA is 0x400.
-	// That means the non-relative VA is 0x400000 + RVA = 0x400400.
-	// Note that the .exe, although it does specify a base virtual address for itself on the disk,
-	// may actually be loaded anywhere in the RAM once it's launched, and that RAM location will
-	// become its base virtual address.
-	DWORD relativeVirtualAddress = 0;
-	
-	// VA. Virtual address within the .exe.
-	// A virtual address is the location of something within the .exe once it's loaded into memory.
-	// An on-disk, file .exe is usually smaller than when it's loaded so it creates this distinction
-	// between raw address and virtual address.
-	DWORD virtualAddress = 0;
-	
-	// The size in terms of virtual address space.
-	DWORD virtualSize = 0;
-	
-	// Actual position of the start of this section's data within the file.
-	DWORD rawAddress = 0;
-	
-	// Size of this section's data on disk in the file.
-	DWORD rawSize = 0;
-};
-
-std::vector<Section> readSections(FILE* file, DWORD* imageBase) {
-	size_t readBytes;
-	std::vector<Section> result;
-
-	DWORD peHeaderStart = 0;
-	fseek(file, 0x3C, SEEK_SET);
-	readBytes = fread(&peHeaderStart, 4, 1, file);
-
-	unsigned short numberOfSections = 0;
-	fseek(file, peHeaderStart + 0x6, SEEK_SET);
-	readBytes = fread(&numberOfSections, 2, 1, file);
-
-	DWORD optionalHeaderStart = peHeaderStart + 0x18;
-
-	unsigned short optionalHeaderSize = 0;
-	fseek(file, peHeaderStart + 0x14, SEEK_SET);
-	readBytes = fread(&optionalHeaderSize, 2, 1, file);
-
-	fseek(file, peHeaderStart + 0x34, SEEK_SET);
-	readBytes = fread(imageBase, 4, 1, file);
-
-	DWORD sectionsStart = optionalHeaderStart + optionalHeaderSize;
-	DWORD sectionStart = sectionsStart;
-	for (size_t sectionCounter = numberOfSections; sectionCounter != 0; --sectionCounter) {
-		Section newSection;
-		fseek(file, sectionStart, SEEK_SET);
-		newSection.name.resize(8);
-		readBytes = fread(&newSection.name.front(), 1, 8, file);
-		newSection.name.resize(strlen(newSection.name.c_str()));
-		readBytes = fread(&newSection.virtualSize, 4, 1, file);
-		readBytes = fread(&newSection.relativeVirtualAddress, 4, 1, file);
-		newSection.virtualAddress = *imageBase + newSection.relativeVirtualAddress;
-		readBytes = fread(&newSection.rawSize, 4, 1, file);
-		readBytes = fread(&newSection.rawAddress, 4, 1, file);
-		result.push_back(newSection);
-		sectionStart += 40;
-	}
-
-	return result;
-}
-
-DWORD rawToVa(const std::vector<Section>& sections, DWORD rawAddr) {
-	if (sections.empty()) return 0;
-	auto it = sections.cend();
-	--it;
-	while (true) {
-		const Section& section = *it;
-		if (rawAddr >= section.rawAddress) {
-			return rawAddr - section.rawAddress + section.virtualAddress;
+DWORD rawToVa(DWORD rawAddr) {
+    PIMAGE_SECTION_HEADER section = IMAGE_FIRST_SECTION(pNtHeader) + pNtHeader->FileHeader.NumberOfSections;
+    for (int sectionIndex = (int)pNtHeader->FileHeader.NumberOfSections - 1; sectionIndex >= 0; --sectionIndex) {
+        --section;
+        if (rawAddr >= section->PointerToRawData) {
+			return rawAddr - section->PointerToRawData + section->VirtualAddress + pNtHeader->OptionalHeader.ImageBase;
 		}
-		if (it == sections.cbegin()) break;
-		--it;
 	}
 	return 0;
 }
 
-DWORD vaToRaw(const std::vector<Section>& sections, DWORD va) {
-	if (sections.empty()) return 0;
-	auto it = sections.cend();
-	--it;
-	while (true) {
-		const Section& section = *it;
-		if (va >= section.virtualAddress) {
-			return va - section.virtualAddress + section.rawAddress;
+DWORD vaToRaw(DWORD va) {
+    va -= pNtHeader->OptionalHeader.ImageBase;
+    
+    PIMAGE_SECTION_HEADER section = IMAGE_FIRST_SECTION(pNtHeader) + pNtHeader->FileHeader.NumberOfSections;
+    for (int sectionIndex = (int)pNtHeader->FileHeader.NumberOfSections - 1; sectionIndex >= 0; --sectionIndex) {
+        --section;
+        if (va >= section->VirtualAddress) {
+			return va - section->VirtualAddress + section->PointerToRawData;
 		}
-		if (it == sections.cbegin()) break;
-		--it;
 	}
 	return 0;
 }
 
-DWORD vaToRva(DWORD va, DWORD imageBase) {
-	return va - imageBase;
+DWORD vaToRva(DWORD va) {
+	return va - pNtHeader->OptionalHeader.ImageBase;
 }
 
-DWORD rvaToVa(DWORD rva, DWORD imageBase) {
-	return rva + imageBase;
+DWORD rvaToVa(DWORD rva) {
+	return rva + pNtHeader->OptionalHeader.ImageBase;
 }
 
-DWORD rvaToRaw(const std::vector<Section>& sections, DWORD rva) {
-	if (sections.empty()) return 0;
-	auto it = sections.cend();
-	--it;
-	while (true) {
-		const Section& section = *it;
-		if (rva >= section.relativeVirtualAddress) {
-			return rva - section.relativeVirtualAddress + section.rawAddress;
-		}
-		if (it == sections.cbegin()) break;
-		--it;
-	}
-	return 0;
+DWORD rvaToRaw(DWORD rva) {
+    return vaToRaw(rva + pNtHeader->OptionalHeader.ImageBase);
 }
+
+DWORD rawToRva(DWORD raw) { return rawToVa(raw) - pNtHeader->OptionalHeader.ImageBase; }
+inline DWORD ptrToRaw(BYTE* ptr) { return (DWORD)(ptr - fileBase); }
+DWORD ptrToRva(BYTE* ptr) { return rawToRva(ptrToRaw(ptr)); }
+DWORD ptrToVa(BYTE* ptr) { return rawToVa(ptrToRaw(ptr)); }
+inline BYTE* rawToPtr(DWORD raw) { return raw + fileBase; }
+BYTE* rvaToPtr(DWORD rva) { return rawToPtr(rvaToRaw(rva)); }
+BYTE* vaToPtr(DWORD va) { return rawToPtr(vaToRaw(va)); }
 
 /// <summary>
 /// Writes a relocation entry at the current file position.
@@ -435,6 +692,28 @@ CrossPlatformString generateBackupPath(const CrossPlatformString& parentDir, con
 	}
 	
 	return result;
+}
+
+void trimLeft(std::string& str) {
+    if (str.empty()) return;
+	auto it = str.begin();
+	while (it != str.end() && *it <= 32) ++it;
+	str.erase(str.begin(), it);
+}
+
+void trimRight(std::string& str) {
+    if (str.empty()) return;
+    auto it = str.end();
+    --it;
+    while (true) {
+        if (*it > 32) break;
+        if (it == str.begin()) {
+            str.clear();
+            return;
+        }
+        --it;
+    }
+    str.resize(it - str.begin() + 1);
 }
 
 bool crossPlatformOpenFile(FILE** file, const CrossPlatformString& path) {
@@ -473,6 +752,18 @@ void copyFileLinux(const std::string& pathSource, const std::string& pathDestina
 }
 #endif
 
+// does not close the file, but truncates it
+void overwriteWholeFile(FILE* file, const std::vector<char>& data) {
+    fseek(file, 0, SEEK_SET);
+    fwrite(data.data(), 1, data.size(), file);
+    fflush(file);
+    #ifndef FOR_LINUX
+    SetEndOfFile((HANDLE)_get_osfhandle(_fileno(file)));
+    #else
+    ftruncate(fileno(file), data.size());
+    #endif
+}
+
 struct FoundReloc {
 	char type;  // see macros starting with IMAGE_REL_BASED_
 	DWORD regionVa;  // position of the place that the reloc is patching
@@ -490,15 +781,13 @@ struct RelocBlockIterator {
 	
 	const char* const relocTableOrig;
 	const DWORD relocTableVa;
-	const DWORD imageBase;
 	DWORD relocTableSize;  // remaining size
 	const char* relocTableNext;
 	
-	RelocBlockIterator(const char* relocTable, DWORD relocTableVa, DWORD relocTableSize, DWORD imageBase)
+	RelocBlockIterator(const char* relocTable, DWORD relocTableVa, DWORD relocTableSize)
 		:
 		relocTableOrig(relocTable),
 		relocTableVa(relocTableVa),
-		imageBase(imageBase),
 		relocTableSize(relocTableSize),
 		relocTableNext(relocTable) { }
 		
@@ -509,7 +798,7 @@ struct RelocBlockIterator {
 		const char* relocTable = relocTableNext;
 		
 		DWORD pageBaseRva = *(DWORD*)relocTable;
-		DWORD pageBaseVa = rvaToVa(pageBaseRva, imageBase);
+		DWORD pageBaseVa = rvaToVa(pageBaseRva);
 		DWORD blockSize = *(DWORD*)(relocTable + 4);
 		
 		relocTableNext += blockSize;
@@ -575,31 +864,29 @@ struct RelocTable {
 	DWORD raw;  // the raw position of the reloc table's start
 	DWORD size;  // the size of the whole reloc table
 	int sizeWhereRaw;  // the raw location of the size of the whole reloc table
-	DWORD imageBase;  // the Virtual Address of the base of the image
 	
 	// Finds the file position of the start of the reloc table and its size
-	void findRelocTable(char* wholeFileBegin, const std::vector<Section>& sections, DWORD imageBase) {
+	void findRelocTable() {
 		
-		const char* peHeaderStart = wholeFileBegin + *(DWORD*)(wholeFileBegin + 0x3C);
+		const char* peHeaderStart = (char*)fileBase + *(DWORD*)(fileBase + 0x3C);
 		
 	    const char* relocSectionHeader = peHeaderStart + 0xA0;
 	    
 	    DWORD relocRva = *(DWORD*)relocSectionHeader;
 	    DWORD* relocSizePtr = (DWORD*)relocSectionHeader + 1;
-	    sizeWhereRaw = (uintptr_t)((const char*)relocSizePtr - wholeFileBegin) & 0xFFFFFFFF;
+	    sizeWhereRaw = (uintptr_t)((const BYTE*)relocSizePtr - fileBase) & 0xFFFFFFFF;
 	    
-	    va = rvaToVa(relocRva, imageBase);
-	    raw = rvaToRaw(sections, relocRva);
-	    relocTable = wholeFileBegin + raw;
+	    va = rvaToVa(relocRva);
+	    raw = rvaToRaw(relocRva);
+	    relocTable = (char*)fileBase + raw;
 	    size = *relocSizePtr;
-	    this->imageBase = imageBase;
 	}
 	
 	// region specified in Virtual Address space
 	std::vector<FoundReloc> findRelocsInRegion(DWORD regionStart, DWORD regionEnd) const {
 		std::vector<FoundReloc> result;
 		
-		RelocBlockIterator blockIterator(relocTable, va, size, imageBase);
+		RelocBlockIterator blockIterator(relocTable, va, size);
 		
 		FoundRelocBlock block;
 		while (blockIterator.getNext(block)) {
@@ -633,7 +920,7 @@ struct RelocTable {
 	
 	FoundRelocBlock findLastRelocBlock() const {
 		
-		RelocBlockIterator blockIterator(relocTable, va, size, imageBase);
+		RelocBlockIterator blockIterator(relocTable, va, size);
 		
 		FoundRelocBlock block;
 		while (blockIterator.getNext(block));
@@ -644,7 +931,7 @@ struct RelocTable {
 	std::vector<FoundReloc> findReusableRelocEntries(DWORD vaToPatch) const {
 		std::vector<FoundReloc> result;
 		
-		RelocBlockIterator blockIterator(relocTable, va, size, imageBase);
+		RelocBlockIterator blockIterator(relocTable, va, size);
 		
 		FoundRelocBlock block;
 		while (blockIterator.getNext(block)) {
@@ -696,7 +983,7 @@ struct RelocTable {
 	// 2) Try to expand the last block if the target is reachable from its page base;
 	// 3) Add a new block to the end of the table with that one entry.
 	void addEntry(FILE* file, DWORD vaToRelocate, char type) {
-		unsigned short relocEntry = ((unsigned short)type << 12) | (vaToRva(vaToRelocate, imageBase) & 0xFFF);
+		unsigned short relocEntry = ((unsigned short)type << 12) | (vaToRva(vaToRelocate) & 0xFFF);
 		
 		std::vector<FoundReloc> reusableEntries = findReusableRelocEntries(vaToRelocate);
 		if (!reusableEntries.empty()) {
@@ -747,7 +1034,7 @@ struct RelocTable {
 		increaseSizeBy(file, 12);  // changes 'size'
 		
 		
-		DWORD rvaToRelocate = vaToRva(vaToRelocate, imageBase);
+		DWORD rvaToRelocate = vaToRva(vaToRelocate);
 		DWORD newRelocPageBase = rvaToRelocate & 0xFFFFF000;
 		
 		DWORD tableData[3];
@@ -774,7 +1061,7 @@ struct RelocTable {
 			<< reloc.relocVa << " that relocates va:0x" << reloc.regionVa << std::dec << ".\n";
 	}
 	
-};
+} relocTable;  // RelocTable is able to modify the contents of fileBase
 
 // you must use the returned result immediately or copy it somewhere. Do not store it as-is. This function is not thread-safe either
 const char* printRelocType(char type) {
@@ -785,7 +1072,7 @@ const char* printRelocType(char type) {
 		case IMAGE_REL_BASED_HIGHLOW: return "IMAGE_REL_BASED_HIGHLOW";
 		case IMAGE_REL_BASED_HIGHADJ: return "IMAGE_REL_BASED_HIGHADJ";
 		case IMAGE_REL_BASED_DIR64: return "IMAGE_REL_BASED_DIR64";
-		default: sprintf_s(printRelocTypeBuf, "%d", (int)type); return printRelocTypeBuf;
+		default: SPRINTF_NARROW(printRelocTypeBuf, "%d", (int)type); return printRelocTypeBuf;
 	}
 }
 
@@ -808,10 +1095,8 @@ void printFoundRelocs(const std::vector<FoundReloc>& relocs) {
 }
 
 bool findExec(const char* name,
-			const char* wholeFileBegin,
 			const char* rdataBegin, const char* rdataEnd,
 			const char* dataBegin, const char* dataEnd,
-			const std::vector<Section>& sections,
 			DWORD* va, DWORD* pos) {
 	
 	std::vector<char> nameAr;
@@ -829,24 +1114,835 @@ bool findExec(const char* name,
 		CrossPlatformCout << "Failed to find " << name << " string.\n";
 		return false;
 	}
-	strPos += (rdataBegin - wholeFileBegin) & 0xFFFFFFFF;
+	strPos += (rdataBegin - (char*)fileBase) & 0xFFFFFFFF;
 	CrossPlatformCout << "Found " << name << " string at file:0x" << std::hex << strPos << std::dec << ".\n";
 	
-	DWORD strVa = rawToVa(sections, strPos);
+	DWORD strVa = rawToVa(strPos);
 	
 	int strMentionPos = sigscanEveryNBytes<4>(dataBegin, dataEnd, (const char*)&strVa);
 	if (strMentionPos == -1) {
 		CrossPlatformCout << "Failed to find mention of " << name << " string.\n";
 		return false;
 	}
-	strMentionPos += (dataBegin - wholeFileBegin) & 0xFFFFFFFF;
+	strMentionPos += (dataBegin - (char*)fileBase) & 0xFFFFFFFF;
 	CrossPlatformCout << "Found mention of " << name << " string at file:0x" << std::hex << strMentionPos << std::dec << ".\n";
 	
-	*va = *(DWORD*)(wholeFileBegin + strMentionPos + 4);
+	*va = *(DWORD*)((char*)fileBase + strMentionPos + 4);
 	CrossPlatformCout << "Found " << name << " function at va:0x" << std::hex << *va << std::dec << ".\n";
 	
-	*pos = vaToRaw(sections, *va);
+	*pos = vaToRaw(*va);
 	return true;
+}
+
+/// <summary>
+/// Finds the address which holds a pointer to a function with the given name imported from the given DLL,
+/// in a given 32-bit portable executable file.
+/// For example, searching USER32.DLL, GetKeyState would return a positive value on successful find, and
+/// in a running process you'd cast that value to a short (__stdcall**)(int).
+/// </summary>
+/// <param name="dll">Include ".DLL" in the DLL's name here. Case-insensitive.</param>
+/// <param name="function">The name of the function. Case-sensitive.</param>
+/// <returns>The file offset which holds a pointer to a function. -1 if not found.</returns>
+int findImportedFunction(const char* dll, const char* function) {
+	
+	// see IMAGE_IMPORT_DESCRIPTOR
+	struct ImageImportDescriptor {
+		DWORD ImportLookupTableRVA;  // The RVA of the import lookup table. This table contains a name or ordinal for each import. (The name "Characteristics" is used in Winnt.h, but no longer describes this field.)
+		DWORD TimeDateStamp;  // The stamp that is set to zero until the image is bound. After the image is bound, this field is set to the time/data stamp of the DLL. LIES, this field is 0 for me at runtime.
+		DWORD ForwarderChain;  // The index of the first forwarder reference. 0 for me.
+		DWORD NameRVA;  // The address of an ASCII string that contains the name of the DLL. This address is relative to the image base.
+		DWORD ImportAddressTableRVA;  // The RVA of the import address table. The contents of this table are identical to the contents of the import lookup table until the image is bound.
+	};
+	DWORD importsSize = pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].Size;
+	const ImageImportDescriptor* importPtrNext = (const ImageImportDescriptor*)(rvaToPtr(
+		pNtHeader->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress
+	));
+	for (; importsSize > 0; importsSize -= sizeof (ImageImportDescriptor)) {
+		const ImageImportDescriptor* importPtr = importPtrNext++;
+		if (!importPtr->ImportLookupTableRVA) break;
+		const char* dllName = (const char*)(rvaToPtr(importPtr->NameRVA));
+		if (CrossPlatformStringCompareCaseInsensitive(dllName, dll) != 0) continue;
+		DWORD* funcPtr = (DWORD*)(rvaToPtr(importPtr->ImportAddressTableRVA));
+		DWORD* imageImportByNameRvaPtr = (DWORD*)(rvaToPtr(importPtr->ImportLookupTableRVA));
+		struct ImageImportByName {
+			short importIndex;  // if you know this index you can use it for lookup. Name is just convenience for programmers.
+			char name[1];  // arbitrary length, zero-terminated ASCII string
+		};
+		do {
+			DWORD rva = *imageImportByNameRvaPtr;
+			if (!rva) break;
+			const ImageImportByName* importByName = (const ImageImportByName*)(rvaToPtr(rva));
+			if (strcmp(importByName->name, function) == 0) {
+				return (int)((BYTE*)funcPtr - fileBase);
+			}
+			++funcPtr;
+			++imageImportByNameRvaPtr;
+		} while (true);
+		return -1;
+	}
+	return -1;
+}
+
+int findImportedFunctionAndReport(const char* dllName, const char* functionName) {
+    int found = findImportedFunction(dllName, functionName);
+	if (found == -1) {
+	    CrossPlatformCout << "Failed to find " << functionName << " function.\n";
+	    return -1;
+	}
+	CrossPlatformCout << "Found " << functionName << " function at va:0x"
+	    << std::hex << rawToVa(found) << std::dec << '\n';
+	return found;
+}
+
+Sig FFileManagerWindows_GetFileTimestamp_Sig;
+	
+int FFileManagerWindows_GetFileTimestamp = -1;
+int CreateFileWOff = -1;
+int GetFileTimeOff = -1;
+int CloseHandleOff = -1;
+int GetFileAttributesWOff = -1;
+	
+// finds everything that's needed to run patchDaylightSaving
+bool findInfoForPatchingDaylightSaving(FILE* file,
+	    char* textBegin,
+	    char* textEnd,
+	    char* rdataBegin,
+	    char* rdataEnd) {
+    
+    FFileManagerWindows_GetFileTimestamp_Sig = Sig{
+        "6a ff 68 ?? ?? ?? ?? 64 a1 00 00 00 00 50 83 ec 60 a1 ?? ?? ?? ?? 33 c4 89 44 24 5c 53 55 56 57"
+        " a1 ?? ?? ?? ?? 33 c4 50 8d 44 24 74 64 a3 00 00 00 00 8b bc 24 84 00 00 00 8b f1 8b 06 8b 50 54 57 8d 4c 24 2c 51 8b ce"
+        " ff d2 33 db 89 5c 24 7c 39 58 04 74 04 8b 00 eb 05"
+        #define MOV_EAX_EMPTYSTRING 0  // MOV EAX,""
+        " >b8 ?? ?? ?? ??"
+        " 8b 16 8b 52 58 50 8d 44 24 20 50 8b ce ff d2 39 58 04 74 04 8b 00 eb 05"
+        " b8 ?? ?? ?? ?? 8b 2d 44 d5 48 01 8d 4c 24 40 51 50 ff d5 83 c4 08 85 c0 75 0a df 6c 24 60 dd 5c 24 14 eb 0e"
+        #define NEGATIVE_1 1  // MOVSD XMM0,qword ptr [DOUBLE_014a0db0], DOUBLE_014a0db0 says 00 00 00 00 00 00 f0 bf, which means -1.0
+        " >f2 0f 10 05 ?? ?? ?? ??"
+        " f2 0f 11 44 24 14 8b 44 24 1c 89 5c 24 24 89 5c 24 20 3b c3 74 0d 50"
+        #define APP_FREE 2  // CALL appFree
+        " >e8 ?? ?? ?? ??"
+        " 83 c4 04 89 5c 24 1c 8b 44 24 28 c7 44 24 7c ff ff ff ff 89 5c 24 30 89 5c 24 2c 3b c3 74 09 50 e8 ?? ?? ?? ??"
+        " 83 c4 04 f2 0f 10 44 24 14 66 0f 2e 05 ?? ?? ?? ?? 9f f6 c4 44 7a 5d 8b 16 8b 52 54 57 8d 44 24 38 50 8b ce"
+        " ff d2 39 58 04 74 04 8b 00 eb 05 b8 ?? ?? ?? ?? 8d 4c 24 40 51 50 ff d5 83 c4 08 85 c0 75 0a df 6c 24 60 dd 5c 24 14 eb 0e"
+        " f2 0f 10 05 ?? ?? ?? ?? f2 0f 11 44 24 14 8b 44 24 34 89 5c 24 3c 89 5c 24 38 3b c3 74 09 50 e8 ?? ?? ?? ??"
+        " 83 c4 04 dd 44 24 14 8b 4c 24 74 64 89 0d 00 00 00 00 59 5f 5e 5d 5b 8b 4c 24 5c 33 cc e8 ?? ?? ?? ?? 83 c4 6c c2 04 00"
+    };
+	// ConvertToAbsolutePath is 0x54. Takes FString* out and wchar_t* Filename. Returns out
+	// ConvertAbsolutePathToUserPath is 0x58. Takes FString* out and wchar_t* AbsolutePath. Returns out
+	
+	FFileManagerWindows_GetFileTimestamp = sigscan(textBegin, textEnd,
+	    FFileManagerWindows_GetFileTimestamp_Sig.sig.data(),
+	    FFileManagerWindows_GetFileTimestamp_Sig.mask.data());
+	
+	if (FFileManagerWindows_GetFileTimestamp == -1) {
+	    Sig testSig{"53 55 56 57 8b f1 83 ec ?? 8b 06 8b 50 54 8B 7C 24 ?? 57"};
+	    if (sigscan(textBegin, textEnd, testSig.sig.data(), testSig.mask.data()) != -1) {
+	        CrossPlatformCout << "FFileManagerWindows::GetFileTimestamp function is already patched.\n";
+	        return true;
+	    } else {
+	        CrossPlatformCout << "Failed to find FFileManagerWindows::GetFileTimestamp function.\n";
+	        return false;
+	    }
+	}
+	FFileManagerWindows_GetFileTimestamp += (int)(textBegin - (char*)fileBase);
+	CrossPlatformCout << "Found FFileManagerWindows::GetFileTimestamp function at va:0x"
+	    << std::hex << rawToVa(FFileManagerWindows_GetFileTimestamp) << std::dec << '\n';
+	
+	CreateFileWOff = findImportedFunctionAndReport("kernel32.dll", "CreateFileW");
+	if (CreateFileWOff == -1) return false;
+	GetFileTimeOff = findImportedFunctionAndReport("kernel32.dll", "GetFileTime");
+	if (GetFileTimeOff == -1) return false;
+	CloseHandleOff = findImportedFunctionAndReport("kernel32.dll", "CloseHandle");
+	if (CloseHandleOff == -1) return false;
+	GetFileAttributesWOff = findImportedFunctionAndReport("kernel32.dll", "GetFileAttributesW");
+	if (GetFileAttributesWOff == -1) return false;
+	
+	return true;
+}
+
+struct DesiredEdit {
+    int charOffsetStart;
+    int charOffsetEnd;  // non-inclusive
+    std::string newText;
+};
+
+struct SectionTracker {
+    
+    bool freshLine = true;
+    bool dontLikeLine = false;  // used for parsing [section]s
+    std::string sectionName;
+    bool inSectionName = false;
+    bool isInSectionOfInterest = false;
+    bool isComment = false;
+    std::string keyName;
+    std::string value;
+    bool encounteredEqualSign = false;
+    CrossPlatformString redgame_Folder;  // UE3 adds one more .. at the start of BasedOn values
+    bool basedOnDetected = false;
+    double basedOnTimestamp = 0.0;
+    int lineStartOffset = -1;
+    bool lineNonEmpty = false;  // comments are considered non-empty
+    // subclassing? Pff, we don't do that OOP crap here
+    std::vector<double> newTimestamps;
+    std::vector<DesiredEdit> desiredEdits;
+    int lastSkippableMoviesEnd = -1;
+    int FullScreenMovieSectionLineEnd = -1;
+    int FullScreenMovieSectionLastNonEmptyLineEnd = -1;
+    bool alreadyIgnoresIntro = false;
+    void(SectionTracker::*onLineEnd)(int charOffset) = nullptr;
+    
+    void onLineEnd_BasedOn(int charOffset) {
+        if (!dontLikeLine && !sectionName.empty() && !inSectionName) {
+            if (CrossPlatformStringCompareCaseInsensitive(sectionName.c_str(), "Configuration") == 0) {
+                isInSectionOfInterest = true;
+            } else {
+                isInSectionOfInterest = false;
+            }
+        } else if (isInSectionOfInterest && !keyName.empty() && !value.empty()) {
+            trimLeft(value);
+            trimRight(value);
+            if (CrossPlatformStringCompareCaseInsensitive(keyName.c_str(), "BasedOn") == 0) {
+                CrossPlatformString currentPath = redgame_Folder;
+                CrossPlatformString currentPiece;
+                for (char c : value) {
+                    if (c == '\\') {
+                        if (!currentPiece.empty() && CrossPlatformPathCompare(currentPiece.c_str(), CrossPlatformText("..")) == 0) {
+                            currentPath = getParentDir(currentPath);
+                        } else if (!currentPiece.empty()) {
+                            currentPath += PATH_SEPARATOR + currentPiece;
+                        }
+                        currentPiece.clear();
+                    } else {
+                        currentPiece += (CrossPlatformChar)c;
+                    }
+                }
+                if (!currentPiece.empty()) {
+                    currentPath += PATH_SEPARATOR + currentPiece;
+                }
+                
+                basedOnDetected = getTimestamp(currentPath, &basedOnTimestamp);
+                
+            }
+        }
+    }
+    
+    void onLineEnd_IniVersion(int charOffset) {
+        if (!dontLikeLine && !sectionName.empty() && !inSectionName) {
+            if (CrossPlatformStringCompareCaseInsensitive(sectionName.c_str(), "IniVersion") == 0) {
+                isInSectionOfInterest = true;
+            } else {
+                isInSectionOfInterest = false;
+            }
+        } else if (isInSectionOfInterest && !keyName.empty() && !value.empty() && lineStartOffset != -1) {
+            int parsedIndex = -1;
+            if (strcmp(keyName.c_str(), "0") == 0) {
+                parsedIndex = 0;
+            } else if (strcmp(keyName.c_str(), "1") == 0) {
+                parsedIndex = 1;
+            }
+            if (parsedIndex != -1 && parsedIndex < (int)newTimestamps.size()) {
+                char strbuf[1024];
+                SPRINTF_NARROW(strbuf, "%d=%f", parsedIndex, newTimestamps[parsedIndex]);
+                
+                desiredEdits.emplace_back();
+                DesiredEdit& newEdit = desiredEdits.back();
+                newEdit.charOffsetStart = lineStartOffset;
+                newEdit.charOffsetEnd = charOffset;
+                newEdit.newText = strbuf;
+            }
+        }
+    }
+    
+    void onLineEnd_ignoreIntro(int charOffset) {
+        if (!dontLikeLine && !sectionName.empty() && !inSectionName) {
+            if (CrossPlatformStringCompareCaseInsensitive(sectionName.c_str(), "FullScreenMovie") == 0) {
+                isInSectionOfInterest = true;
+                FullScreenMovieSectionLineEnd = charOffset;
+            } else {
+                isInSectionOfInterest = false;
+            }
+        } else if (isInSectionOfInterest && !keyName.empty() && !value.empty() && lineStartOffset != -1) {
+            int parsedIndex = -1;
+            if (CrossPlatformStringCompareCaseInsensitive(keyName.c_str(), "SkippableMovies") == 0) {
+                lastSkippableMoviesEnd = charOffset;
+                trimLeft(value);
+                trimRight(value);
+                if (CrossPlatformStringCompareCaseInsensitive(value.c_str(), "Splash_Steam") == 0) {
+                    alreadyIgnoresIntro = true;
+                }
+            }
+        } else if (isInSectionOfInterest && lineStartOffset != -1 && lineNonEmpty) {
+            FullScreenMovieSectionLastNonEmptyLineEnd = charOffset;
+        }
+    }
+    
+    static bool getTimestamp(const CrossPlatformString& path, double* timestamp) {
+        
+        if (fileExists(path)) {
+            
+            unsigned long long ticks = 0;
+            
+            #define SECS_1601_TO_1970  ((369 * 365 + 89) * (ULONGLONG)86400)
+            #define TICKSPERSEC 10000000
+            
+            #ifndef FOR_LINUX
+            CreateFileW(L"path",GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
+            HANDLE baseFile = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+            if (baseFile != INVALID_HANDLE_VALUE) {
+                
+                struct OwnFileCloser {
+                    ~OwnFileCloser() {
+                        if (file) CloseHandle(file);
+                    }
+                    HANDLE file = NULL;
+                } ownFileCloser { baseFile };
+                
+                FILETIME fileTime;
+                
+                if (GetFileTime(baseFile, NULL, NULL, &fileTime)) {
+                    ticks = *(unsigned long long*)&fileTime;
+                    ticks = (ticks - SECS_1601_TO_1970 * TICKSPERSEC) / TICKSPERSEC;
+                }
+            }
+            #else
+            struct stat buf;
+            int statResult = stat(path.c_str(), &buf);
+            if (statResult != -1) {
+                if (sizeof(time_t) == sizeof(int)) {
+                    ticks = (ULONGLONG)(ULONG)buf.st_mtime;
+                } else {
+                    ticks = (ULONGLONG)buf.st_mtime;
+                }
+            }
+            #endif
+            
+            if (ticks) {
+                *timestamp = (double)ticks;
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    void reset() {
+        lineStartOffset = -1;
+        lineNonEmpty = false;
+        keyName.clear();
+        value.clear();
+        freshLine = true;
+        dontLikeLine = false;
+        sectionName.clear();
+        inSectionName = false;
+        encounteredEqualSign = false;
+        isComment = false;
+    }
+    
+    void parseChar(char c, int charOffset) {
+        if (c == '\r' || c == '\n') {
+            (this->*onLineEnd)(charOffset);
+            reset();
+        } else if (freshLine && c == '[') {
+            inSectionName = true;
+            lineStartOffset = charOffset;
+            freshLine = false;
+            lineNonEmpty = true;
+        } else if (inSectionName) {
+            if (c == ']') {
+                inSectionName = false;
+            } else {
+                sectionName += c;
+            }
+        } else if (!freshLine && (c == '\t' || c == ' ') && !sectionName.empty()) {
+            // ok, allowed to have whitespace after a section ]
+            // UE3 only considers '\t' and ' ' to be whitespace
+        } else {
+            if (freshLine) {
+                if (c == ';') isComment = true;
+                lineStartOffset = charOffset;
+                freshLine = false;
+            }
+            lineNonEmpty = lineNonEmpty || c > 32;
+            dontLikeLine = true;
+            if (isInSectionOfInterest && !isComment) {
+                if (c == '=' && !encounteredEqualSign) {
+                    encounteredEqualSign = true;
+                    trimLeft(keyName);
+                    trimRight(keyName);
+                } else if (!encounteredEqualSign) {
+                    keyName += c;
+                } else {
+                    value += c;
+                }
+            }
+        }
+    }
+    
+    void runLoop(const std::vector<char>& data, void(SectionTracker::*onLineEndParam)(int charOffset)) {
+        onLineEnd = onLineEndParam;
+        int cOffset = 0;
+        for (char c : data) {
+            parseChar(c, cOffset);
+            ++cOffset;
+        }
+        (this->*onLineEnd)(cOffset);
+    }
+    
+    void applyEdits(std::vector<char>& data) {
+        for (DesiredEdit& desiredEdit : desiredEdits) {
+            data.erase(data.begin() + desiredEdit.charOffsetStart, data.begin() + desiredEdit.charOffsetEnd);
+            data.insert(data.begin() + desiredEdit.charOffsetStart, desiredEdit.newText.size(), 0);
+            memcpy(data.data() + desiredEdit.charOffsetStart, desiredEdit.newText.c_str(), desiredEdit.newText.size());
+            int shift = (int)desiredEdit.newText.size()
+                - (desiredEdit.charOffsetEnd - desiredEdit.charOffsetStart);
+            for (DesiredEdit& desiredEditModif : desiredEdits) {
+                if (desiredEditModif.charOffsetStart > desiredEdit.charOffsetStart) {
+                    desiredEditModif.charOffsetStart += shift;
+                    desiredEditModif.charOffsetEnd += shift;
+                }
+            }
+        }
+    }
+    
+};
+
+// also updates RED* INI files' IniVersion timestamps.
+// Closes the file
+void patchDaylightSaving(FILE* file,
+    const CrossPlatformString& szFile,
+	char* textBegin,
+	char* textEnd,
+	char* rdataBegin,
+	char* rdataEnd) {
+    
+	struct NewCode {
+	    std::vector<BYTE> data;
+	    void add(const Sig& sig) {
+	        if (sig.mask.empty()) return;
+	        if (sig.mask.front() == '\0') return;
+	        data.insert(data.end(), sig.sig.begin(), sig.sig.end() - 1);
+	    }
+	    void add(const Sig& sig, DWORD substitute) {
+	        if (sig.mask.empty()) return;
+	        if (sig.mask.front() == '\0') return;
+	        
+	        #ifdef _DEBUG
+            static bool reportedOnce = false;
+	        bool broke = false;
+	        #endif
+	        int count = 0;
+	        std::vector<char>::const_iterator maskIt;
+	        std::vector<char>::const_iterator nextIt = sig.mask.begin();
+	        for (int charCount = (int)sig.sig.size() - 1; charCount > 0; --charCount) {
+	            maskIt = nextIt++;
+	            if (*maskIt == '?') {
+                    #ifdef _DEBUG
+                    if (broke) {
+                        if (!reportedOnce) {
+                            reportedOnce = true;
+                            MessageBoxW(mainWindow, L"Can't have multiple groups of '?' for substitution.", L"Error", MB_OK);
+                        }
+                        return;
+                    }
+                    #endif
+	                ++count;
+	            }
+                #ifdef _DEBUG
+	            else if (count) {
+                    broke = true;
+                    if (count != 4 && count != 1) {
+                        if (!reportedOnce) {
+                            reportedOnce = true;
+                            MessageBoxW(mainWindow, L"Wrong number of '?' for substitution.", L"Error", MB_OK);
+                        }
+                        return;
+                    }
+	            }
+                #endif
+	        }
+	        #ifdef _DEBUG
+	        if (count != 4 && count != 1) {
+                if (!reportedOnce) {
+                    reportedOnce = true;
+                    MessageBoxW(mainWindow, L"Wrong number of '?' for substitution.", L"Error", MB_OK);
+                }
+                return;
+	        }
+	        #endif
+	        size_t oldSize = data.size();
+	        data.resize(oldSize + sig.sig.size() - 1);
+	        auto dest = data.begin() + oldSize;
+	        auto src = sig.sig.begin();
+	        maskIt = sig.mask.begin();
+	        
+	        for (int charCount = (int)sig.sig.size() - 1; charCount > 0; ) {
+	            if (*maskIt == '?') {
+	                if (count == 4) {
+	                    *(DWORD*)&*dest = substitute;
+	                    dest += 4;
+                        src += 4;
+                        maskIt += 4;
+                        charCount -= 4;
+	                } else if (count == 1) {
+	                    *(BYTE*)&*dest = (BYTE)substitute;
+	                    ++dest;
+                        ++src;
+                        ++maskIt;
+                        --charCount;
+	                }
+	            } else {
+	                *dest++ = *src++;
+	                ++maskIt;
+	                --charCount;
+	            }
+	        }
+	    }
+	} newCode;
+	
+	#define FIRST_FSTRING 0x0  // FString (12 bytes). MUST BE 0 due to using a 8B 04 24 instruction
+	#define SECOND_FSTRING 0xc  // FString (12 bytes)
+	#define FIRST_TEXT 0x18  // const wchar_t* (4 bytes)
+	#define RESULT 0x1c  // double (8 bytes)
+	#define FILETIMEVAR 0x24  // FILETIME (8 bytes)
+	#define SUCCESSFUL_PATH 0x2c  // const wchar_t* (4 bytes)
+	#define STACK_SPACE 0x60
+	
+	newCode.add(
+	    "53 55 56 57"  // PUSH EBX,EBP,ESI,EDI
+	    " 8b f1"  // MOV ESI,ECX
+	    " 83 ec ??", STACK_SPACE);  // SUB ESP,STACK_SPACE
+	    
+    newCode.add("8b 06"  // MOV EAX,dword ptr [ESI]
+	    " 8b 50 54"  // MOV EDX,dword ptr [EAX + 0x54]  ; ConvertToAbsolutePath. Takes FString* out and wchar_t* Filename. Returns out
+	    " 8B 7C 24 ??", STACK_SPACE + 0x10 + 0x4);  // MOV EDI,dword ptr [ESP + STACK_SPACE + 0x10 (4 pushes) + 4 (Filename, first stack argument)]
+    newCode.add("57");  // PUSH EDI
+	newCode.add("8d 4c 24 ??", FIRST_FSTRING + 4  /* see PUSH EDI above */);  // LEA ECX,[ESP + FIRST_FSTRING + 4]
+	newCode.add("51"  // PUSH ECX
+	    " 8b ce" // MOV ECX,ESI
+	    " ff d2"  // CALL EDX
+    );
+	
+	DWORD baseVa = rawToVa(FFileManagerWindows_GetFileTimestamp);
+	DWORD emptyStringVa = *(DWORD*)(fileBase + FFileManagerWindows_GetFileTimestamp + FFileManagerWindows_GetFileTimestamp_Sig.positions[MOV_EAX_EMPTYSTRING] + 1);
+	CrossPlatformCout << "Found an empty string at va:0x" << std::hex << emptyStringVa << std::dec << '\n';
+	DWORD negative1Va = *(DWORD*)(fileBase + FFileManagerWindows_GetFileTimestamp + FFileManagerWindows_GetFileTimestamp_Sig.positions[NEGATIVE_1] + 4);
+	CrossPlatformCout << "Found an -1.0 at va:0x" << std::hex << negative1Va << std::dec << '\n';
+	DWORD appFreeVa = baseVa
+	    + (DWORD)FFileManagerWindows_GetFileTimestamp_Sig.positions[APP_FREE]
+	    + 5
+	    + *(int*)(fileBase + FFileManagerWindows_GetFileTimestamp + FFileManagerWindows_GetFileTimestamp_Sig.positions[APP_FREE] + 1);
+	CrossPlatformCout << "Found appFree function at va:0x" << std::hex << appFreeVa << std::dec << '\n';
+	
+	std::vector<FoundReloc> relocs = relocTable.findRelocsInRegion(
+	    baseVa,
+	    baseVa + (DWORD)FFileManagerWindows_GetFileTimestamp_Sig.sig.size() - 1);
+	
+	for (const FoundReloc& foundReloc : relocs) {
+		relocTable.removeEntry(file, foundReloc);
+	}
+	
+	newCode.add(
+	    "33 db"  // XOR EBX,EBX
+	    " 39 58 04"  // CMP dword ptr [EAX + 0x4],EBX
+	    " 74 04"  // JZ 0x4
+	    " 8b 00"  // MOV EAX,dword ptr [EAX]  ; read Data member of FString
+	    " eb 05"  // JMP 0x5
+    );
+	size_t newCodeSize = newCode.data.size();
+	newCode.add("b8 ?? ?? ?? ??", emptyStringVa);  // MOV EAX,emptyString
+	relocTable.addEntry(file, baseVa + (DWORD)newCodeSize + 1, IMAGE_REL_BASED_HIGHLOW);
+	
+	newCode.add("89 44 24 ??", FIRST_TEXT);  // MOV dword ptr[ESP+FIRST_TEXT],EAX
+	
+	newCode.add(
+	    "8b 16"  // MOV EDX,dword ptr [ESI]
+	    " 8b 52 58"  // MOV EDX,dword ptr[EDX + 0x58]  ; ConvertAbsolutePathToUserPath. Takes FString* out and wchar_t* AbsolutePath. Returns out
+	    " 50"  // PUSH EAX
+	    " 8d 44 24 ??", SECOND_FSTRING + 4 /* see PUSH EAX above */);  // LEA EAX,[ESP + SECOND_FSTRING + 4]
+	newCode.add("50"  // PUSH EAX
+	    " 8b ce" // MOV ECX,ESI
+	    " ff d2"  // CALL EDX
+	    
+	    " 39 58 04"  // CMP dword ptr [EAX + 0x4],EBX
+	    " 74 04"  // JZ 0x4
+	    " 8b 00"  // MOV EAX,dword ptr [EAX]  ; read Data member of FString
+	    " eb 05"  // JMP 0x5
+    );
+	newCodeSize = newCode.data.size();
+	newCode.add("b8 ?? ?? ?? ??", emptyStringVa);  // MOV EAX,emptyString
+	relocTable.addEntry(file, baseVa + (DWORD)newCodeSize + 1, IMAGE_REL_BASED_HIGHLOW);
+	
+	newCode.add("89 44 24 ??", SUCCESSFUL_PATH);  // MOV dword ptr[ESP + SUCCESSFUL_PATH],EAX
+	newCode.add("50");  // PUSH EAX
+	
+	newCodeSize = newCode.data.size();
+	newCode.add("8b 2d ?? ?? ?? ??", rawToVa(GetFileAttributesWOff));  // MOV EBP,dword ptr[->KERNEL32.DLL::GetFileAttributesW]
+	relocTable.addEntry(file, baseVa + (DWORD)newCodeSize + 2, IMAGE_REL_BASED_HIGHLOW);
+	
+	newCode.add("FF D5"  // CALL EBP
+	    " 4B"  // DEC EBX
+	    " 39 D8");  // CMP EAX,EBX
+	size_t jmpToAfterRet1 = newCode.data.size();
+	newCode.add("75 00"  // JNZ afterRet, will fill in later
+	    " 8B 44 24 ??", FIRST_TEXT);  // MOV EAX,dword ptr[ESP + FIRST_TEXT]
+    newCode.add("89 44 24 ??", SUCCESSFUL_PATH);  // MOV dword ptr[ESP + SUCCESSFUL_PATH],EAX
+	newCode.add("50");  // PUSH EAX
+	newCode.add("ff d5"  // CALL EBP
+	    " 39 D8");  // CMP EAX,EBX
+	size_t jmpToAfterRet2 = newCode.data.size();
+	newCode.add("75 00");  // JNZ afterRet, will fill in later
+	
+	newCodeSize = newCode.data.size();
+	size_t errorReturn = newCodeSize;
+	newCode.add("f2 0f 10 05 ?? ?? ?? ??", negative1Va);  // MOVSD XMM0,qword ptr[-1.0]
+	relocTable.addEntry(file, baseVa + (DWORD)newCodeSize + 4, IMAGE_REL_BASED_HIGHLOW);
+	
+	newCode.add("f2 0f 11 44 24 ??", RESULT);  // MOVSD qword ptr[ESP + RESULT],XMM0
+	
+	size_t returnLabel = newCode.data.size();
+	newCode.add("43"  // INC EBX
+	    " 8B 04 24"  // MOV EAX,dword ptr[ESP]  ; read Data member of first FString
+	    " 39 D8"  // CMP EAX,EBX
+	    " 74 09"  // JZ 0x9
+	    " 50"  // PUSH EAX
+    );
+	newCodeSize = newCode.data.size();
+	int offset = (int)appFreeVa - (int)(baseVa + newCodeSize + 5);
+	newCode.add("e8 ?? ?? ?? ??", offset);
+	
+	newCode.add("83 c4 04"  // ADD ESP,0x4
+	    " 8b 44 24 ??", SECOND_FSTRING);  // MOV EAX,dword ptr[ESP + SECOND_FSTRING]  ; read Data member of second FString
+	newCode.add("39 D8"  // CMP EAX,EBX
+	    " 74 09"  // JZ 0x9
+	    " 50"  // PUSH EAX
+    );
+	newCodeSize = newCode.data.size();
+	offset = (int)appFreeVa - (int)(baseVa + newCodeSize + 5);
+	newCode.add("e8 ?? ?? ?? ??", offset);
+	
+	newCode.add("83 c4 04"  // ADD ESP,0x4
+	    " dd 44 24 ??", RESULT);  // FLD qword ptr[ESP + RESULT]
+	newCode.add("83 c4 ??", STACK_SPACE);  // ADD ESP,STACK_SPACE
+	newCode.add("5f 5e 5d 5b"  // POP EDI,ESI,EBP,EBX
+	    " c2 04 00");  // RET 0x4
+	
+	int jumpDistance = (int)(newCode.data.size() - (jmpToAfterRet1 + 2));
+	#ifdef _DEBUG
+	if (jumpDistance > 0x7f) {
+	    MessageBoxW(mainWindow, L"Jump offset 1 too long.", L"Error", MB_OK);
+	    return;
+	}
+	#endif
+	newCode.data[jmpToAfterRet1 + 1] = (BYTE)jumpDistance;
+	
+	jumpDistance = (int)(newCode.data.size() - (jmpToAfterRet2 + 2));
+	#ifdef _DEBUG
+	if (jumpDistance > 0x7f) {
+	    MessageBoxW(mainWindow, L"Jump offset 2 too long.", L"Error", MB_OK);
+	    return;
+	}
+	#endif
+	newCode.data[jmpToAfterRet2 + 1] = (BYTE)jumpDistance;
+	
+	// CreateFileW(L"path",GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
+	newCode.add("6A 00");  // PUSH 0
+	newCode.add("68 ?? ?? ?? ??", FILE_ATTRIBUTE_NORMAL);  // PUSH FILE_ATTRIBUTE_NORMAL
+	newCode.add("6A ??", OPEN_EXISTING);  // PUSH OPEN_EXISTING
+	newCode.add("6A 00");  // PUSH 0
+	newCode.add("6A ??", FILE_SHARE_READ);  // PUSH FILE_SHARE_READ
+	newCode.add("68 ?? ?? ?? ??", GENERIC_READ);  // PUSH GENERIC_READ
+	newCode.add("FF 74 24 ??", SUCCESSFUL_PATH + 6*4);  // PUSH dword ptr[ESP + SUCCESSFUL_PATH + 6pushes]
+	
+	newCodeSize = newCode.data.size();
+	newCode.add("ff 15 ?? ?? ?? ??", rawToVa(CreateFileWOff));  // CALL dword ptr[->KERNEL32.DLL::CreateFileW]
+	relocTable.addEntry(file, baseVa + (DWORD)newCodeSize + 2, IMAGE_REL_BASED_HIGHLOW);
+	
+	newCode.add("8b f0"  // MOV ESI,EAX
+	    " 39 DE"  // CMP ESI,EBX
+    );
+	#ifdef _DEBUG
+	if (newCode.data.size() + 2 - errorReturn > 0x80) {
+	    MessageBoxW(mainWindow, L"Can't jump from CreateFileW to error return.", L"Error", MB_OK);
+	    return;
+	}
+	#endif
+	newCode.add("74 ??", (int)errorReturn - (int)(newCode.data.size() + 2));  // JZ errorReturn
+	
+	// GetFileTime(hFile, lpCreationTime, lpLastAccessTime, lpLastWriteTime)
+	newCode.add("8D 44 24 ??", FILETIMEVAR);  // LEA EAX,[ESP+FILETIMEVAR]
+	newCode.add("50"  // PUSH EAX
+	    " 6A 00"  // PUSH 0
+	    " 6A 00"  // PUSH 0
+	    " 56");  // PUSH ESI
+	
+	newCodeSize = newCode.data.size();
+	newCode.add("ff 15 ?? ?? ?? ??", rawToVa(GetFileTimeOff));  // CALL dword ptr[->KERNEL32.DLL::GetFileTime]
+	relocTable.addEntry(file, baseVa + (DWORD)newCodeSize + 2, IMAGE_REL_BASED_HIGHLOW);
+	
+	#ifdef _DEBUG
+	if (newCode.data.size() + 4 - errorReturn > 0x80) {
+	    MessageBoxW(mainWindow, L"Can't jump from GetFileTime to error return.", L"Error", MB_OK);
+	    return;
+	}
+	#endif
+	
+	newCode.add("89 c5"  // MOV EBP,EAX
+	    " 56");  // PUSH ESI
+	
+	newCodeSize = newCode.data.size();
+	newCode.add("ff 15 ?? ?? ?? ??", rawToVa(CloseHandleOff));  // CALL dword ptr[->KERNEL32.DLL::CloseHandle]
+	relocTable.addEntry(file, baseVa + (DWORD)newCodeSize + 2, IMAGE_REL_BASED_HIGHLOW);
+	
+	newCode.add("85 ed"  // TEST EBP,EBP
+	    " 74 ??",  // JZ errorReturn
+	    (int)errorReturn - (int)(newCode.data.size() + 4)
+    );
+	
+	// FILETIME:
+    // Contains a 64-bit value representing the number of 100-nanosecond intervals since January 1, 1601 (UTC).
+	
+	long long timeDiff = (
+            (1970LL - 1601LL) * 365LL
+            + 24LL * 3LL  // 3 centuries worth of leap years
+            + (70 - 1) / 4  // leap years between 1900 and 1970, not inclusive
+        ) * 24LL  // hours
+        * 60LL  // minutes
+        * 60LL  // seconds
+        * 1000LL  // milliseconds
+        * 1000LL  // microseconds
+        * 10LL;  // 100 nanosecond intervals
+	
+	newCode.add("81 6C 24 ??", FILETIMEVAR); // SUB dword ptr[ESP+FILETIMEVAR],...
+	newCode.add("?? ?? ?? ??", (DWORD)timeDiff); // first 4 bytes of timeDiff
+	newCode.add("81 5C 24 ??", FILETIMEVAR + 4); // SBB dword ptr[ESP+FILETIMEVAR + 4],...
+	newCode.add("?? ?? ?? ??", (DWORD)(timeDiff >> 32)); // last 4 bytes of timeDiff
+	newCode.add("b9 ?? ?? ?? ??", 10000000);  // MOV ECX,10000000
+	newCode.add("8b 44 24 ??", FILETIMEVAR + 4);  // MOV EAX,dword ptr[ESP+FILETIMEVAR + 4]
+	newCode.add("31 d2"  // XOR EDX,EDX
+	    " F7 F1"  // DIV ECX
+	    " 89 c5");  // MOV EBP,EAX
+	newCode.add("8b 44 24 ??", FILETIMEVAR);  // MOV EAX,dword ptr[ESP+FILETIMEVAR]
+    newCode.add("F7 F1"  // DIV ECX
+        " 89 44 24 ??", RESULT);  // MOV dword ptr[ESP+RESULT],EAX
+    newCode.add("89 6C 24 ??", RESULT + 4);  // MOV dword ptr[ESP+RESULT + 4],EBP
+	
+	newCode.add("DF 6C 24 ??", RESULT);  // FILD qword ptr[ESP+RESULT]
+	newCode.add("dd 5c 24 ??", RESULT);  // FSTP qword ptr[ESP+RESULT]
+	
+	jumpDistance = (int)returnLabel - (int)(newCode.data.size() + 2);
+	if (jumpDistance >= -0x80) {
+	    newCode.add("eb ??", jumpDistance);
+	} else {
+	    jumpDistance = (int)returnLabel - (int)(newCode.data.size() + 5);
+	    newCode.add("e9 ?? ?? ?? ??", jumpDistance);
+	}
+	
+	#ifdef _DEBUG
+	if (newCode.data.size() > FFileManagerWindows_GetFileTimestamp_Sig.sig.size() - 1) {
+	    MessageBoxW(mainWindow, L"The new code is larger than the old code.", L"Error", MB_OK);
+	    return;
+	}
+	#endif
+	
+	fseek(file, FFileManagerWindows_GetFileTimestamp, SEEK_SET);
+	fwrite(newCode.data.data(), 1, newCode.data.size(), file);
+	
+    CrossPlatformCout << "Patched the daylight saving bug in GuiltyGearXrd.exe.\n";
+	
+    fclose(file);
+	
+	CrossPlatformString bin_win32_Folder = getParentDir(szFile);
+	CrossPlatformString bin_Folder = getParentDir(bin_win32_Folder);
+	CrossPlatformString root_Folder = getParentDir(bin_Folder);
+	CrossPlatformString engine_config_Folder = root_Folder
+	    + PATH_SEPARATOR + CrossPlatformText("Engine")
+	    + PATH_SEPARATOR + CrossPlatformText("Config");
+	CrossPlatformString redgame_Folder = root_Folder
+	    + PATH_SEPARATOR + CrossPlatformText("REDGame");
+	CrossPlatformString redgame_config_Folder = root_Folder
+	    + PATH_SEPARATOR + CrossPlatformText("REDGame")
+	    + PATH_SEPARATOR + CrossPlatformText("Config");
+	
+	struct ThreeNames {
+	    const CrossPlatformChar* red;
+	    const CrossPlatformChar* default_;
+	    const CrossPlatformChar* base;
+	    ThreeNames(const CrossPlatformChar* red, const CrossPlatformChar* default_, const CrossPlatformChar* base)
+	        : red(red), default_(default_), base(base) { }
+	};
+	
+	static const ThreeNames iniNames[] = {
+	    { CrossPlatformText("REDDebug.ini"), CrossPlatformText("DefaultDebug.ini"), CrossPlatformText("BaseDebug.ini") },
+	    { CrossPlatformText("REDEngine.ini"), CrossPlatformText("DefaultEngine.ini"), CrossPlatformText("BaseEngine.ini") },
+	    { CrossPlatformText("REDGame.ini"), CrossPlatformText("DefaultGame.ini"), CrossPlatformText("BaseGame.ini") },
+	    { CrossPlatformText("REDInput.ini"), CrossPlatformText("DefaultInput.ini"), CrossPlatformText("BaseInput.ini") },
+	    { CrossPlatformText("REDLightmass.ini"), CrossPlatformText("DefaultLightmass.ini"), CrossPlatformText("BaseLightmass.ini") },
+	    { CrossPlatformText("REDSystemSettings.ini"), CrossPlatformText("DefaultSystemSettings.ini"), CrossPlatformText("BaseSystemSettings.ini") },
+	    { CrossPlatformText("REDTMS.ini"), CrossPlatformText("DefaultTMS.ini"), CrossPlatformText("BaseTMS.ini") },
+	    { CrossPlatformText("REDUI.ini"), CrossPlatformText("DefaultUI.ini"), CrossPlatformText("BaseUI.ini") }
+	};
+	
+	for (const ThreeNames& threeName : iniNames) {
+	    CrossPlatformString redPath = redgame_config_Folder + PATH_SEPARATOR + threeName.red;
+	    CrossPlatformString defaultPath = redgame_config_Folder + PATH_SEPARATOR + threeName.default_;
+	    if (!fileExists(redPath) || !fileExists(defaultPath)) continue;
+	    
+	    
+	    FILE* defaultFile = NULL;
+	    if (!crossPlatformOpenFile(&defaultFile, defaultPath)) continue;
+	    
+	    struct FileCloser {
+	        ~FileCloser() {
+	            if (file) fclose(file);
+	        }
+	        FILE* file = NULL;
+	    } fileCloser { defaultFile };
+	    
+	    std::vector<char> defaultData;
+	    if (!readWholeFile(defaultFile, defaultData)) continue;
+        
+	    SectionTracker sectionTracker;
+	    sectionTracker.redgame_Folder = redgame_Folder;
+	    
+	    sectionTracker.runLoop(defaultData, &SectionTracker::onLineEnd_BasedOn);
+	    sectionTracker.reset();
+	    
+	    if (sectionTracker.basedOnDetected) {
+	        sectionTracker.newTimestamps.push_back(sectionTracker.basedOnTimestamp);
+	    }
+	    
+	    fclose(defaultFile);
+	    fileCloser.file = NULL;
+	    
+        double defaultTimestamp;
+        if (SectionTracker::getTimestamp(defaultPath, &defaultTimestamp)) {
+            sectionTracker.newTimestamps.push_back(defaultTimestamp);
+        }
+	    
+	    FILE* redFile = NULL;
+	    if (crossPlatformOpenFile(&redFile, redPath)) {
+	        fileCloser.file = redFile;
+	        
+	        std::vector<char> redData;
+	        if (readWholeFile(redFile, redData)) {
+	            
+	            sectionTracker.runLoop(redData, &SectionTracker::onLineEnd_IniVersion);
+	            
+	            if (sectionTracker.desiredEdits.size() == sectionTracker.newTimestamps.size() && !sectionTracker.desiredEdits.empty()) {
+	                sectionTracker.applyEdits(redData);
+	                overwriteWholeFile(redFile, redData);
+	                CrossPlatformCout << "Updated IniVersion timestamps in " << getFileName(redPath).c_str() << '\n';
+	                fclose(redFile);
+	                fileCloser.file = NULL;
+	            }
+	            
+	        }
+            
+	    }
+	    
+	    
+	}
+	
 }
 
 void meatOfTheProgram() {
@@ -901,14 +1997,16 @@ void meatOfTheProgram() {
 	#else
 	std::string szFile;
 	std::getline(std::cin, szFile);
-	trim(szFile);
+	trimLeft(szFile);
+	trimRight(szFile);
 	if (!szFile.empty() && (szFile.front() == '\'' || szFile.front() == '"')) {
 		szFile.erase(szFile.begin());
 	}
 	if (!szFile.empty() && (szFile.back() == '\'' || szFile.back() == '"')) {
 		szFile.erase(szFile.begin() + (szFile.size() - 1));
 	}
-	trim(szFile);
+	trimLeft(szFile);
+	trimRight(szFile);
 	if (szFile.empty()) {
 		std::cout << "Empty path provided. Aborting.\n";
 		return;
@@ -945,18 +2043,11 @@ void meatOfTheProgram() {
 	}
 	CrossPlatformCout << "Will use backup file path: " << backupFilePath.c_str() << std::endl;
 	
-	#ifndef FOR_LINUX
-	if (!CopyFileW(szFile.c_str(), backupFilePath.c_str(), true)) {
-		std::wcout << "Failed to create a backup copy. Do you want to continue anyway? You won't be able to revert the file to the original. Press Enter to agree...\n";
-		std::getline(std::wcin, ignoreLine);
-	} else {
-		std::wcout << "Backup copy created successfully.\n";
-	}
-	#else
-	copyFileLinux(szFile, backupFilePath);
-	std::wcout << "Backup copy created successfully.\n";
-	#endif
-	
+    if (!crossPlatformFileCopy(backupFilePath, szFile,
+	    CrossPlatformText("Backup copy created successfully.\n"),
+	    CrossPlatformText("Failed to create a backup copy. Do you want to continue anyway?"
+        	" You won't be able to revert the file to the original. Press Enter to agree...\n"))) return;
+    
 	struct CloseFileOnExit {
 		~CloseFileOnExit() {
 			if (file) fclose(file);
@@ -970,7 +2061,11 @@ void meatOfTheProgram() {
 
 	std::vector<char> wholeFile;
 	if (!readWholeFile(file, wholeFile)) return;
-	char* wholeFileBegin = &wholeFile.front();
+	fileBase = (BYTE*)wholeFile.data();
+	
+	PIMAGE_DOS_HEADER pDosHeader = (PIMAGE_DOS_HEADER)fileBase;
+	pNtHeader = (nthdr)((PBYTE)fileBase + pDosHeader->e_lfanew);
+    
 	char* wholeFileEnd = &wholeFile.front() + wholeFile.size();
 	char* textBegin = nullptr;
 	char* textEnd = nullptr;
@@ -979,38 +2074,47 @@ void meatOfTheProgram() {
 	char* dataBegin = nullptr;
 	char* dataEnd = nullptr;
 	
-	DWORD imageBase;
-	std::vector<Section> sections = readSections(file, &imageBase);
-	if (sections.empty()) {
-		CrossPlatformCout << "Failed to read sections\n";
-		return;
+	if (pNtHeader->FileHeader.NumberOfSections == 0) {
+	    CrossPlatformCout << "Failed to read sections.\n";
+	    return;
 	}
+	
 	CrossPlatformCout << "Read sections: [\n";
 	CrossPlatformCout << std::hex;
 	bool isFirst = true;
-	for (const Section& section : sections) {
-		if (!isFirst) {
-			CrossPlatformCout << ",\n";
-		}
-		isFirst = false;
-		CrossPlatformCout << "{\n\tname: \"" << section.name.c_str() << "\""
-			<< ",\n\tvirtualSize: 0x" << section.virtualSize
-			<< ",\n\tvirtualAddress: 0x" << section.virtualAddress
-			<< ",\n\trawSize: 0x" << section.rawSize
-			<< ",\n\trawAddress: 0x" << section.rawAddress
-			<< "\n}";
-		
-		if (section.name == ".text") {
-			textBegin = &wholeFile.front() + section.rawAddress;
-			textEnd = textBegin + section.rawSize;
-		} else if (section.name == ".rdata") {
-			rdataBegin = &wholeFile.front() + section.rawAddress;
-			rdataEnd = rdataBegin + section.rawSize;
-		} else if (section.name == ".data") {
-			dataBegin = &wholeFile.front() + section.rawAddress;
-			dataEnd = dataBegin + section.rawSize;
-		}
-	}
+	{
+        PIMAGE_SECTION_HEADER section = IMAGE_FIRST_SECTION(pNtHeader) + pNtHeader->FileHeader.NumberOfSections;
+        for (int sectionIndex = (int)pNtHeader->FileHeader.NumberOfSections - 1; sectionIndex >= 0; --sectionIndex) {
+            --section;
+		    if (!isFirst) {
+			    CrossPlatformCout << ",\n";
+		    }
+		    isFirst = false;
+		    CrossPlatformCout << "{\n\tname: \"";
+		    
+		    std::vector<char> sectionName(9, '\0');
+		    memcpy(sectionName.data(), section->Name, 8);
+		    sectionName.resize(strlen(sectionName.data()) + 1);
+		    sectionName.back() = '\0';
+		    
+		    CrossPlatformCout << sectionName.data() << "\""
+			    << ",\n\tvirtualAddress: 0x" << section->VirtualAddress + pNtHeader->OptionalHeader.ImageBase
+			    << ",\n\trawSize: 0x" << section->SizeOfRawData
+			    << ",\n\trawAddress: 0x" << section->PointerToRawData
+			    << "\n}";
+		    
+		    if (strcmp(sectionName.data(), ".text") == 0) {
+			    textBegin = &wholeFile.front() + section->PointerToRawData;
+			    textEnd = textBegin + section->SizeOfRawData;
+		    } else if (strcmp(sectionName.data(), ".rdata") == 0) {
+			    rdataBegin = &wholeFile.front() + section->PointerToRawData;
+			    rdataEnd = rdataBegin + section->SizeOfRawData;
+		    } else if (strcmp(sectionName.data(), ".data") == 0) {
+			    dataBegin = &wholeFile.front() + section->PointerToRawData;
+			    dataEnd = dataBegin + section->SizeOfRawData;
+		    }
+	    }
+    }
 	CrossPlatformCout << "\n]\n";
 	CrossPlatformCout << std::dec;
 	
@@ -1031,13 +2135,11 @@ void meatOfTheProgram() {
 	
 	DWORD execIsAsyncLoadingVa, execIsAsyncLoadingPos;
 	if (!findExec("UREDGfxMoviePlayer_MenuInterludeexecIsAsyncLoading",
-			wholeFileBegin,
 			rdataBegin, rdataEnd,
 			dataBegin, dataEnd,
-			sections,
 			&execIsAsyncLoadingVa, &execIsAsyncLoadingPos)) return;
 	
-	const char* execIsAsyncLoadingPtr = wholeFileBegin + execIsAsyncLoadingPos;
+	const char* execIsAsyncLoadingPtr = (char*)fileBase + execIsAsyncLoadingPos;
 	DWORD oldGNativesExDebugInfoMentionVa = 0;
 	DWORD GNativesExDebugInfoVa = 0;
 	int oldGNativesExDebugInfoPos = sigscan(execIsAsyncLoadingPtr, execIsAsyncLoadingPtr + 0x40, "\xff\x15", "xx");
@@ -1052,8 +2154,8 @@ void meatOfTheProgram() {
 		}
 		anotherGNativesExDebugInfoPos += sizeof anotherGNativesExDebugInfoSig - 1;
 		
-		DWORD anotherGNativesExDebugInfoMentionVa = rawToVa(sections,
-			anotherGNativesExDebugInfoPos + ((uintptr_t)(textBegin - wholeFileBegin) & 0xFFFFFFFF));
+		DWORD anotherGNativesExDebugInfoMentionVa = rawToVa(
+			anotherGNativesExDebugInfoPos + ((uintptr_t)(textBegin - (char*)fileBase) & 0xFFFFFFFF));
 		
 		CrossPlatformCout << "Found the mention of GNatives[EX_DebugInfo] not in execIsAsyncLoading, but somewhere else: va:0x"
 			<< std::hex << anotherGNativesExDebugInfoMentionVa << std::dec << ". execIsAsyncLoading itself doesn't mention GNatives[EX_DebugInfo].\n";
@@ -1068,33 +2170,30 @@ void meatOfTheProgram() {
 	}
 	CrossPlatformCout << "Found GNatives[EX_DebugInfo]: va:0x" << std::hex << GNativesExDebugInfoVa << std::dec << ".\n";
 	
-	RelocTable relocTable;  // RelocTable is able to modify the contents of wholeFileBegin
-	relocTable.findRelocTable(wholeFileBegin, sections, imageBase);
+	relocTable.findRelocTable();
 	
 	
 	// Now find the jump that goes after the bBlocking check in UREDCharaAssetLoader::LoadAssets
 	
 	DWORD execLoadAssetsVa, execLoadAssetsPos;
 	if (!findExec("UREDCharaAssetLoaderexecLoadAssets",
-			wholeFileBegin,
 			rdataBegin, rdataEnd,
 			dataBegin, dataEnd,
-			sections,
 			&execLoadAssetsVa, &execLoadAssetsPos)) return;
 	CrossPlatformCout << "Found execLoadAssets at va:0x" << std::hex << execLoadAssetsVa << std::dec << ".\n";
 	
-	const char* execLoadAssetsBegin = wholeFileBegin + vaToRaw(sections, execLoadAssetsVa);
+	const char* execLoadAssetsBegin = (char*)fileBase + vaToRaw(execLoadAssetsVa);
 	int loadAssetsCallPlacePos = sigscanForward(execLoadAssetsBegin, textEnd, 0x130, "\x8b\xcb\xe8", "xxx");
 	if (loadAssetsCallPlacePos == -1) {
 		CrossPlatformCout << "Couldn't find LoadAssets calling place.\n";
 		return;
 	}
-	loadAssetsCallPlacePos += 2 + (execLoadAssetsBegin - wholeFileBegin) & 0xFFFFFFFF;
+	loadAssetsCallPlacePos += 2 + (execLoadAssetsBegin - (char*)fileBase) & 0xFFFFFFFF;
 	CrossPlatformCout << "Found LoadAssets calling place: file:0x" << std::hex << loadAssetsCallPlacePos << std::dec << ".\n";
 	
-	DWORD loadAssetsVa = followRelativeCall(rawToVa(sections, loadAssetsCallPlacePos), wholeFileBegin + loadAssetsCallPlacePos);
+	DWORD loadAssetsVa = followRelativeCall(rawToVa(loadAssetsCallPlacePos), (char*)fileBase + loadAssetsCallPlacePos);
 	
-	const char* loadAssetsBegin = wholeFileBegin + vaToRaw(sections, loadAssetsVa);
+	const char* loadAssetsBegin = (char*)fileBase + vaToRaw(loadAssetsVa);
 	bool jmpAlreadyNopedOut = false;
 	int jmpPos = sigscanForward(loadAssetsBegin, textEnd, 0x1b0, "\x39\x5c\x24\x48\x74\x16", "xxxxxx");
 	if (jmpPos == -1) {
@@ -1106,7 +2205,7 @@ void meatOfTheProgram() {
 		jmpAlreadyNopedOut = true;
 	}
 	jmpPos += 4;
-	jmpPos += (loadAssetsBegin - wholeFileBegin) & 0xFFFFFFFF;
+	jmpPos += (loadAssetsBegin - (char*)fileBase) & 0xFFFFFFFF;
 	CrossPlatformCout << "Found 'if (bBlocking != 0) {' instruction in LoadAssets at file:0x" << std::hex << jmpPos << std::dec << ".";
 	if (jmpAlreadyNopedOut) {
 		CrossPlatformCout << " It's already deleted. Moving on.\n";
@@ -1129,7 +2228,7 @@ void meatOfTheProgram() {
 			CrossPlatformCout << "Couldn't find the start of FName::Init(const ANSICHAR* InName, INT InNumber, EFindName FindType)\n";
 			return;
 		}
-		FNameInitVa = rawToVa(sections, ((uintptr_t)(textBegin - wholeFileBegin) & 0xFFFFFFFF) + FNameInitStartPos);
+		FNameInitVa = rawToVa(((uintptr_t)(textBegin - (char*)fileBase) & 0xFFFFFFFF) + FNameInitStartPos);
 		CrossPlatformCout << "Found FName::Init(const ANSICHAR* InName, INT InNumber, EFindName FindType) at va:0x"
 			<< std::hex << FNameInitVa << std::dec << "\n";
 		
@@ -1147,7 +2246,7 @@ void meatOfTheProgram() {
 			CrossPlatformCout << "Couldn't find the start of FName::Compare\n";
 			return;
 		}
-		FNameCompareVa = rawToVa(sections, ((uintptr_t)(textBegin - wholeFileBegin) & 0xFFFFFFFF) + FNameCompareStartPos);
+		FNameCompareVa = rawToVa(((uintptr_t)(textBegin - (char*)fileBase) & 0xFFFFFFFF) + FNameCompareStartPos);
 		CrossPlatformCout << "Found FName::Compare at va:0x" << std::hex << FNameCompareVa << std::dec << "\n";
 	}
 	
@@ -1299,12 +2398,12 @@ void meatOfTheProgram() {
 		
 		
 		int FNameInitCallPos = sigscan(writeBuf, writeBufEnd, "\xE8\x00\x00\x00\x00", "xxxxx");
-		int callOffset = calculateRelativeCall(rawToVa(sections, execIsAsyncLoadingPos + FNameInitCallPos), FNameInitVa);
+		int callOffset = calculateRelativeCall(rawToVa(execIsAsyncLoadingPos + FNameInitCallPos), FNameInitVa);
 		memcpy(writeBuf + FNameInitCallPos + 1, &callOffset, 4);
 		
 		
 		int FNameCompareCallPos = sigscan(writeBuf, writeBufEnd, "\xE8\x00\x00\x00\x00", "xxxxx");
-		callOffset = calculateRelativeCall(rawToVa(sections, execIsAsyncLoadingPos + FNameCompareCallPos), FNameCompareVa);
+		callOffset = calculateRelativeCall(rawToVa(execIsAsyncLoadingPos + FNameCompareCallPos), FNameCompareVa);
 		memcpy(writeBuf + FNameCompareCallPos + 1, &callOffset, 4);
 		
 		
@@ -1332,8 +2431,8 @@ void meatOfTheProgram() {
 	    DWORD menuTimewasteCounterVa = *(DWORD*)(textBegin + menuTimewasteCounterUsage + 18);
 		CrossPlatformCout << "Found the variable that holds the amount of time needed to waste for you on each initial game loading message"
 		    " at va:0x" << std::hex << menuTimewasteCounterVa << std::dec << "\n";
-		int menuTimewasteCounterRaw = vaToRaw(sections, menuTimewasteCounterVa);
-		int currentVal = *(int*)(wholeFileBegin + menuTimewasteCounterRaw);
+		int menuTimewasteCounterRaw = vaToRaw(menuTimewasteCounterVa);
+		int currentVal = *(int*)((char*)fileBase + menuTimewasteCounterRaw);
 		if (currentVal == 0x5a) {
 		    fseek(file, menuTimewasteCounterRaw, SEEK_SET);
 		    int newVal = 0;
@@ -1364,11 +2463,11 @@ void meatOfTheProgram() {
 	        if (nextFind == -1) {
 	            break;
 	        }
-	        int foundFileOffset = nextFind + ((uintptr_t)(searchStart - wholeFileBegin) & 0xFFFFFFFF);
+	        int foundFileOffset = nextFind + ((uintptr_t)(searchStart - (char*)fileBase) & 0xFFFFFFFF);
 	        fseek(file, foundFileOffset + 6, SEEK_SET);
 	        fwrite(&zerosToWrite, 4, 1, file);
 	        CrossPlatformCout << "Overwrote a usage of the variable that just wastes your time on the 'Verifying downloadable content.' message at va:0x"
-	            << std::hex << rawToVa(sections, foundFileOffset) << std::dec << '\n';
+	            << std::hex << rawToVa(foundFileOffset) << std::dec << '\n';
 	        foundAtLeastOne = true;
 	        searchStart += nextFind + 10;
 	    }
@@ -1380,6 +2479,262 @@ void meatOfTheProgram() {
 	CrossPlatformCout << "Patch successful!\n";
 	
 	CrossPlatformCout << "Remember, the backup copy has been created at: " << backupFilePath.c_str() << "\n";
+	
+	bool allgood = true;
+	bool iniTouched = false;
+	bool movieTouched = false;
+	
+	int userResponse;
+	#ifdef FOR_LINUX
+	#define IDCANCEL 0
+	#define ENTER_TO_SKIP 1
+	#define NOT_SEE_AT_ALL 2
+	#define IDYES 3
+	#define IDNO 4
+	#endif
+	
+	const CrossPlatformChar* questionStr =
+	    CrossPlatformText("Do you want to be able to skip the intro movie with ArcSys, Team RED, Unreal Engine and Autodesk logos?")
+	    #ifndef FOR_LINUX
+	    L" Respond 'No' to skip this."
+	    #else
+	    " Respond 'n' to skip this."
+	    #endif
+	    ;
+	
+	#ifndef FOR_LINUX
+	userResponse = MessageBoxW(mainWindow, questionStr, L"Question", MB_YESNOCANCEL);
+	#else
+    std::cout << questionStr << "\n";
+    while (true) {
+        std::cout << "Please, enter a 'y' (without quotation marks) to answer 'Yes', 'n' to answer 'No' (nothing will be done), 'c' to cancel.\n";
+        std::string line;
+        GetLine(line);
+        if (stricmp(line.c_str(), "y") == 0) {
+            userResponse = IDYES;
+            break;
+        } else if (stricmp(line.c_str(), "n") == 0) {
+            userResponse = IDNO;
+            break;
+        } else if (stricmp(line.c_str(), "c") == 0) {
+            userResponse = IDCANCEL;
+            break;
+        } else {
+            std::cout << "I don't understand what you typed.\n";
+        }
+    }
+	#endif
+	
+	if (userResponse == IDCANCEL) {
+	    CrossPlatformCout << "It's a bit too late to cancel, most of the patching is already done. This response is considered to be a 'No',"
+	    " so I won't touch the INIs or the daylight saving bug in the EXE, or rename Splash_Steam.wmv.\n";
+	    userResponse = -1;
+	} else if (userResponse == IDYES) {
+	    #ifndef FOR_LINUX
+	    PostMessageW(mainWindow, WM_ASK_CLARIFY, (WPARAM)&userResponse, NULL);
+	    extern HANDLE eventToInjectorThread;
+	    WaitForSingleObject(eventToInjectorThread, INFINITE);
+	    #else
+        std::cout << "Do you want to not see the intro movie at all, or do you just want to be able to press Enter to skip it?\n";
+        while (true) {
+            std::cout <<
+                "Type '1' (without quotation marks) - not see at all;\n"
+                "Type '2' - be able to press Enter to skip;\n"
+                "Type 'c' - cancel.\n";
+            
+            std::string line;
+            GetLine(line);
+            if (strcmp(line.c_str(), "1") == 0) {
+                userResponse = NOT_SEE_AT_ALL;
+                break;
+            } else if (strcmp(line.c_str(), "2") == 0) {
+                userResponse = ENTER_TO_SKIP;
+                break;
+            } else if (stricmp(line.c_str(), "c") == 0) {
+                userResponse = IDCANCEL;
+                break;
+            } else {
+                std::cout << "I don't understand what you typed.\n";
+            }
+        }
+	    #endif
+	}
+	
+    if (userResponse == IDCANCEL) {
+        // welp
+        CrossPlatformCout << "I won't touch the INIs or the daylight saving bug in the EXE then, or rename Splash_Steam.wmv.\n";
+    } else if (userResponse == ENTER_TO_SKIP) {
+        
+        int subresponse = -1;
+        
+        questionStr = CrossPlatformText("Do you want to patch the GuiltyGearXrd.exe to remove"
+            " a bug from it that causes RED* INI files to get overwritten twice a year"
+            " due to daylight saving in countries that use daylight saving?");
+        
+        #ifndef FOR_LINUX
+        subresponse = MessageBoxW(mainWindow, questionStr, L"More patching?", MB_YESNOCANCEL);
+        #else
+        std::cout << questionStr << "\n";
+        while (true) {
+            std::cout << "Please, enter a 'y' (without quotation marks) to answer 'Yes', 'n' to answer 'No', 'c' to cancel.\n";
+            std::string line;
+            GetLine(line);
+            if (stricmp(line.c_str(), "y") == 0) {
+                subresponse = IDYES;
+                break;
+            } else if (stricmp(line.c_str(), "n") == 0) {
+                subresponse = IDNO;
+                break;
+            } else if (stricmp(line.c_str(), "c") == 0) {
+                subresponse = IDCANCEL;
+                break;
+            } else {
+                std::cout << "I don't understand what you typed.\n";
+            }
+        }
+        #endif
+        
+        if (subresponse == IDCANCEL) {
+            CrossPlatformCout << "Well, we were almost done anyway...\n";
+        } else {
+            if (subresponse == IDYES) {
+                if (findInfoForPatchingDaylightSaving(file, textBegin, textEnd, rdataBegin, rdataEnd)) {
+                    patchDaylightSaving(file, szFile, textBegin, textEnd, rdataBegin, rdataEnd);
+                    fileCloser.file = NULL;  // the above function closes the file
+                    file = NULL;
+                    iniTouched = true;
+                } else {
+                    allgood = false;
+                }
+            }
+            
+            CrossPlatformString iniPath = getParentDir(getParentDir(getParentDir(szFile)))
+                + PATH_SEPARATOR + CrossPlatformText("REDGame")
+                + PATH_SEPARATOR + CrossPlatformText("Config")
+                + PATH_SEPARATOR + CrossPlatformText("REDEngine.ini");
+            
+            FILE* iniFile = NULL;
+            std::vector<char> iniData;
+            if (fileExists(iniPath) && crossPlatformOpenFile(&iniFile, iniPath) && readWholeFile(iniFile, iniData)) {
+                
+                struct FileCloser2 {
+                    ~FileCloser2() {
+                        if (file) fclose(file);
+                    }
+                    FILE* file = NULL;
+                } fileCloser2;
+                
+                fileCloser2.file = iniFile;
+                
+                SectionTracker sectionTracker;
+                sectionTracker.runLoop(iniData, &SectionTracker::onLineEnd_ignoreIntro);
+                if (sectionTracker.alreadyIgnoresIntro) {
+                    CrossPlatformCout << "The REDGame/Config/REDEngine.ini already has the 'SkippableMovies=Splash_Steam' line. Moving on.\n";
+                } else {
+                    int insertPos = -1;
+                    if (sectionTracker.lastSkippableMoviesEnd != -1) insertPos = sectionTracker.lastSkippableMoviesEnd;
+                    else if (sectionTracker.FullScreenMovieSectionLastNonEmptyLineEnd != -1) insertPos = sectionTracker.FullScreenMovieSectionLastNonEmptyLineEnd;
+                    else if (sectionTracker.FullScreenMovieSectionLineEnd != -1) insertPos = sectionTracker.FullScreenMovieSectionLineEnd;
+                    
+                    if (insertPos == -1) {
+                        CrossPlatformCout << "Failed to insert 'SkippableMovies=Splash_Steam' line into REDGame/Config/REDEngine.ini in the [FullScreenMovie] section.\n";
+                        allgood = false;
+                    } else {
+                        iniTouched = true;
+                        
+                        sectionTracker.desiredEdits.emplace_back();
+                        DesiredEdit& edit = sectionTracker.desiredEdits.back();
+                        edit.charOffsetStart = insertPos;
+                        edit.charOffsetEnd = insertPos;
+                        edit.newText = "\r\nSkippableMovies=Splash_Steam";
+                        
+                        sectionTracker.applyEdits(iniData);
+                        overwriteWholeFile(iniFile, iniData);
+                        CrossPlatformCout << "Added 'SkippableMovies=Splash_Steam' line into REDGame/Config/REDEngine.ini in the [FullScreenMovie] section.\n";
+                    }
+                }
+            } else {
+                allgood = false;
+            }
+        }
+        
+    } else if (userResponse == NOT_SEE_AT_ALL) {
+        
+        CrossPlatformString moviePathFrom = getParentDir(getParentDir(getParentDir(szFile)))
+            + PATH_SEPARATOR + CrossPlatformText("REDGame")
+            + PATH_SEPARATOR + CrossPlatformText("Movies")
+            + PATH_SEPARATOR + CrossPlatformText("Splash_Steam.wmv");
+        
+        CrossPlatformString moviePathTo = getParentDir(getParentDir(getParentDir(szFile)))
+            + PATH_SEPARATOR + CrossPlatformText("REDGame")
+            + PATH_SEPARATOR + CrossPlatformText("Movies")
+            + PATH_SEPARATOR + CrossPlatformText("Splash_Steam_.wmv");
+        
+        if (fileExists(moviePathFrom)) {
+            
+            CrossPlatformString errorMsg = CrossPlatformText("Failed to rename file '");
+            errorMsg += moviePathFrom + CrossPlatformText("' to '") + moviePathTo + CrossPlatformText("': ");
+                    
+            bool success = false;
+            #ifndef FOR_LINUX
+            if (!MoveFileW(moviePathFrom.c_str(), moviePathTo.c_str())) {
+                LPWSTR message = NULL;
+                int errorCode = GetLastError();
+                FormatMessageW(
+                    FORMAT_MESSAGE_ALLOCATE_BUFFER |
+                    FORMAT_MESSAGE_FROM_SYSTEM |
+                    FORMAT_MESSAGE_IGNORE_INSERTS,
+                    NULL,
+                    errorCode,
+                    MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                    (LPWSTR)(&message),
+                    0, NULL);
+                errorMsg += message;
+                MessageBoxW(mainWindow, errorMsg.c_str(), L"Error", MB_OK);
+            } else {
+                success = true;
+            }
+            #else
+            int renameResult = rename(moviePathFrom.c_str(), moviePathTo.c_str()); 
+            if (renameResult == -1) {
+                perror(errorMsg.c_str());
+                std::cout << '\n';
+            } else {
+                success = true;
+            }
+            #endif
+            if (success) {
+                movieTouched = true;
+                CrossPlatformCout << "Successfully renamed '" << moviePathFrom.c_str()
+                    << "' to '" << moviePathTo.c_str() << "'.\n";
+            } else {
+                allgood = false;
+            }
+        } else {
+            CrossPlatformCout << "Failed to find file '" << moviePathFrom.c_str() << "'. I guess, if it's absent, intro won't play anyway,"
+                " so there's no need to do anything more.\n";
+        }
+    }
+	
+	if (allgood) {
+	    CrossPlatformCout << "All work completed successfully!\n";
+	} else {
+	    CrossPlatformCout << "All work completed, with some errors probably, but mostly everything's fine (see messages above).\n";
+	}
+	
+	CrossPlatformCout << "Remember, the backup copy has been created at: " << backupFilePath.c_str();
+	
+	if (iniTouched || movieTouched) {
+	    if (iniTouched && movieTouched) {
+	        CrossPlatformCout << " (REDEngine.ini file and Splash_Steam.wmv do not get backed up.)";
+	    } else if (iniTouched) {
+	        CrossPlatformCout << " (REDEngine.ini file does not get backed up.)";
+	    } else {
+	        CrossPlatformCout << " (Splash_Steam.wmv file does not get backed up.)";
+	    }
+	}
+	
+	CrossPlatformCout << '\n';
 	
 	// file gets closed automatically by fileCloser
 }

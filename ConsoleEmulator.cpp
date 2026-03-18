@@ -158,6 +158,25 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow) {
 	return TRUE;
 }
 
+INT_PTR CALLBACK Dlgproc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+    
+    UNREFERENCED_PARAMETER(lParam);
+    switch (message)
+    {
+    case WM_INITDIALOG:
+        return (INT_PTR)TRUE;
+
+    case WM_COMMAND:
+        if (LOWORD(wParam) == NOT_SEE_AT_ALL || LOWORD(wParam) == ENTER_TO_SKIP || LOWORD(wParam) == IDCANCEL)
+        {
+            EndDialog(hDlg, LOWORD(wParam));
+            return (INT_PTR)TRUE;
+        }
+        break;
+    }
+    return (INT_PTR)FALSE;
+}
+
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
 	LRESULT result = 0;
 	switch (message) {
@@ -175,6 +194,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 			break;
 		case WM_ASK_YES_NO_CANCEL:
 			onAskYesNoCancel(wParam, lParam);
+			break;
+		case WM_ASK_CLARIFY:
+		    *(int*)wParam = (int)DialogBoxW(hInst, MAKEINTRESOURCEW(IDD_CLARIFY), hWnd, Dlgproc);
+			SetEvent(eventToInjectorThread);
 			break;
 		case WM_TASK_ENDED:
 			DestroyWindow(hWnd);
