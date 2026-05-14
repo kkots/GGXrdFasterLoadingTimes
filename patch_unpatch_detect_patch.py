@@ -554,6 +554,7 @@ def patch(guilty_gear_xrd_exe_path, automash, intro_movies_skip_mode, fix_bug_th
             sig_len = len(sig)
             
             if mask is None or ord('?') not in mask:
+                end_pos_for_find = end_pos
                 end_pos -= sig_len
                 if every_4:
                     end_pos = end_pos & ~3
@@ -561,7 +562,7 @@ def patch(guilty_gear_xrd_exe_path, automash, intro_movies_skip_mode, fix_bug_th
                 file_pos = start_pos
                 
                 while file_pos <= end_pos:
-                    file_pos = whole_file.find(sig, file_pos, end_pos + 1)
+                    file_pos = whole_file.find(sig, file_pos, end_pos_for_find)
                     if file_pos == -1:
                         return -1
                     if not every_4 or every_4 and (file_pos & 3) == 0:
@@ -592,7 +593,7 @@ def patch(guilty_gear_xrd_exe_path, automash, intro_movies_skip_mode, fix_bug_th
             file_pos = start_pos
             search_end = end_pos - sig_len + 1
             while file_pos < search_end:
-                file_pos = whole_file.find(sig_piece, file_pos, search_end)
+                file_pos = whole_file.find(sig_piece, file_pos, end_pos)
                 if file_pos == -1:
                     return -1
                 file_pos -= sig_start
