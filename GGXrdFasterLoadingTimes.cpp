@@ -2304,7 +2304,7 @@ void meatOfTheProgram() {
 	// In UpdateExec we want to write TRUE into press1P and return false if we've finished loading,
 	// while returning true (yes we're async loading) whenever the user mashes before we've finished loading.
 	// dword ptr[dword ptr[ESP+0x4]+0x10] + 0x50 is PropertiesSize. It has been observed to be 0x4C for UpdateWaitCharaLoad and 0x30 for UpdateExec.
-	// But we are not going to hardcore these values. We will instead do a proper string check for the name.
+	// But we are not going to hardcode these values. We will instead do a proper string check for the name.
 	
 	char writeBuf_mash[] =
 	// *serial killer breath* I calculated the offsets manually...
