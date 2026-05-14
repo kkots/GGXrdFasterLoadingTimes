@@ -868,7 +868,7 @@ def patch(guilty_gear_xrd_exe_path, automash, intro_movies_skip_mode, fix_bug_th
         class FileWrite:
             def __init__(self, pos, data):
                 self.pos = pos
-                self.data =data
+                self.data = data
         file_writes: list[FileWrite] = []
         file_writes.append(FileWrite(execIsAsyncLoading_raw, write_buf))
         
@@ -1762,9 +1762,6 @@ def unpatch(guilty_gear_xrd_exe_path, also_make_intro_cutscenes_unskippable):
         apply_code(0xaff080,
         # the original contents of the function and the REDGfxMoviePlayer_MenuInterlude::execProcAsyncLoading below it
             "8b 44 24 04 ff 40 18 56 8b f1 8b 48 18 80 39 41 75 10 41 6a 00 89 48 18 8b 48 14 50 ff 15 [24 54 a3 01] 8b ce e8 e7 89 fa ff 8b 4c 24 0c 89 01 5e c2 08 00 cc cc cc cc cc cc cc cc cc cc cc cc cc 51 0f 57 c0 56 8b 74 24 0c 8b 46 18 f3 0f 11 44 24 04 0f b6 10 40 57 89 46 18 8b 14 95 [20 53 a3 01] 8d 44 24 08 50 8b f9 8b 4e 14 56 ff d2 ff 46 18 8b 46 18 80 38 41 75 10 8b 4e 14 6a 00 40 56 89 46 18 ff 15 [24 54 a3 01] f3 0f 10 44 24 08 51 8b cf f3 0f 11 04 24 e8 94 a6 03 00 5f 5e 59 c2 08 00 cc cc cc cc cc cc cc cc cc cc cc cc cc cc")
-        
-        # FFileManagerWindows::GetFileTimestamp
-        apply_code(0xbeb0, "6a ff 68 [68 6a 38 01] 64 a1 00 00 00 00 50 83 ec 60 a1 [10 1b a1 01] 33 c4 89 44 24 5c 53 55 56 57 a1 [10 1b a1 01] 33 c4 50 8d 44 24 74 64 a3 00 00 00 00 8b bc 24 84 00 00 00 8b f1 8b 06 8b 50 54 57 8d 4c 24 2c 51 8b ce ff d2 33 db 89 5c 24 7c 39 58 04 74 04 8b 00 eb 05 b8 [a0 0b 4a 01] 8b 16 8b 52 58 50 8d 44 24 20 50 8b ce ff d2 39 58 04 74 04 8b 00 eb 05 b8 [a0 0b 4a 01] 8b 2d [44 d5 48 01] 8d 4c 24 40 51 50 ff d5 83 c4 08 85 c0 75 0a df 6c 24 60 dd 5c 24 14 eb 0e f2 0f 10 05 [b0 0d 4a 01] f2 0f 11 44 24 14 8b 44 24 1c 89 5c 24 24 89 5c 24 20 3b c3 74 0d 50 e8 a2 fb 01 00 83 c4 04 89 5c 24 1c 8b 44 24 28 c7 44 24 7c ff ff ff ff 89 5c 24 30 89 5c 24 2c 3b c3 74 09 50 e8 7d fb 01 00 83 c4 04 f2 0f 10 44 24 14 66 0f 2e 05 [b0 0d 4a 01] 9f f6 c4 44 7a 5d 8b 16 8b 52 54 57 8d 44 24 38 50 8b ce ff d2 39 58 04 74 04 8b 00 eb 05 b8 [a0 0b 4a 01] 8d 4c 24 40 51 50 ff d5 83 c4 08 85 c0 75 0a df 6c 24 60 dd 5c 24 14 eb 0e f2 0f 10 05 [b0 0d 4a 01] f2 0f 11 44 24 14 8b 44 24 34 89 5c 24 3c 89 5c 24 38 3b c3 74 09 50 e8 0c fb 01 00 83 c4 04 dd 44 24 14 8b 4c 24 74 64 89 0d 00 00 00 00 59 5f 5e 5d 5b 8b 4c 24 5c 33 cc e8 cc 23 f7 00 83 c4 6c c2 04 00")
         
         f.seek(0xae9714)  # the 00eea314 74 16 JZ LAB_00eea32c instruction (if (bBlocking != 0) {) in the UREDCharaAssetLoader::LoadAssets(...)
         f.write(b"\x74\x16")
