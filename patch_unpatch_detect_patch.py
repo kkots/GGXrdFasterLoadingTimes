@@ -39,66 +39,36 @@ class FoundRelocBlock:
 def read_sections(f):
     sections = []
     if not isinstance(f, bytes) and not isinstance(f, bytearray):
-        f.seek(0)
-        if f.read(2) != b'MZ':
-            raise Exception("Not a valid EXE.")
-        f.seek(0x3c)
-        nt_header_off = struct.unpack("<I", f.read(4))[0]
-        f.seek(nt_header_off)
-        if f.read(4) != b"PE\x00\x00":
-            raise Exception("Not a valid EXE.")
-        
-        f.seek(nt_header_off + 6)
-        num_sections = struct.unpack("<H", f.read(2))[0]
-        f.seek(nt_header_off + 0x14)
-        size_of_optional_header = struct.unpack("<H", f.read(2))[0]
-        section_header_off = nt_header_off + 0x18 + size_of_optional_header
-        for section_ind in range(0, num_sections):
-            f.seek(section_header_off)
-            section_name = f.read(8)
-            section_name_length = 0
-            for i in range(0, len(section_name)):
-                byte_value = section_name[i]
-                if byte_value == 0:
-                    break
-                section_name_length += 1
-            section_name_truncated = section_name[0:section_name_length]
-            f.seek(section_header_off + 0xc)
-            section_rva = struct.unpack("<I", f.read(4))[0]
-            f.seek(section_header_off + 0x10)
-            section_raw_size = struct.unpack("<I", f.read(4))[0]
-            f.seek(section_header_off + 0x14)
-            section_raw = struct.unpack("<I", f.read(4))[0]
-            new_section = Section(section_name_truncated, section_rva, section_raw, section_raw_size)
-            sections.append(new_section)
-            section_header_off += 0x28
+        def vread(pos, size):
+            f.seek(pos)
+            return f.read(size)
     else:
         def vread(pos, size):
             return f[pos:pos + size]
             
-        if vread(0,2) != b'MZ':
-            raise Exception("Not a valid EXE.")
-        nt_header_off = struct.unpack("<I", vread(0x3c, 4))[0]
-        if vread(nt_header_off, 4) != b"PE\x00\x00":
-            raise Exception("Not a valid EXE.")
-        
-        num_sections = struct.unpack("<H", vread(nt_header_off + 6, 2))[0]
-        size_of_optional_header = struct.unpack("<H", vread(nt_header_off + 0x14, 2))[0]
-        section_header_off = nt_header_off + 0x18 + size_of_optional_header
-        for section_ind in range(0, num_sections):
-            section_name_length = 0
-            for i in range(0, 8):
-                byte_value = f[section_header_off + i]
-                if byte_value == 0:
-                    break
-                section_name_length += 1
-            section_name_truncated = vread(section_header_off, section_name_length)
-            section_rva = struct.unpack("<I", vread(section_header_off + 0xc, 4))[0]
-            section_raw_size = struct.unpack("<I", vread(section_header_off + 0x10, 4))[0]
-            section_raw = struct.unpack("<I", vread(section_header_off + 0x14, 4))[0]
-            new_section = Section(section_name_truncated, section_rva, section_raw, section_raw_size)
-            sections.append(new_section)
-            section_header_off += 0x28
+    if vread(0,2) != b'MZ':
+        raise Exception("Not a valid EXE.")
+    nt_header_off = struct.unpack("<I", vread(0x3c, 4))[0]
+    if vread(nt_header_off, 4) != b"PE\x00\x00":
+        raise Exception("Not a valid EXE.")
+    
+    num_sections = struct.unpack("<H", vread(nt_header_off + 6, 2))[0]
+    size_of_optional_header = struct.unpack("<H", vread(nt_header_off + 0x14, 2))[0]
+    section_header_off = nt_header_off + 0x18 + size_of_optional_header
+    for section_ind in range(0, num_sections):
+        section_name_length = 0
+        for i in range(0, 8):
+            byte_value = vread(section_header_off + i, 1)
+            if byte_value == 0:
+                break
+            section_name_length += 1
+        section_name_truncated = vread(section_header_off, section_name_length)
+        section_rva = struct.unpack("<I", vread(section_header_off + 0xc, 4))[0]
+        section_raw_size = struct.unpack("<I", vread(section_header_off + 0x10, 4))[0]
+        section_raw = struct.unpack("<I", vread(section_header_off + 0x14, 4))[0]
+        new_section = Section(section_name_truncated, section_rva, section_raw, section_raw_size)
+        sections.append(new_section)
+        section_header_off += 0x28
     return sections
 
 def find_section(sections, name):
@@ -1736,15 +1706,6 @@ def unpatch(guilty_gear_xrd_exe_path, also_make_intro_cutscenes_unskippable):
         
         def va_to_raw(va_addr):
             return rva_to_raw(va_addr - image_base)
-        
-        reloc_section = None
-        for section in sections:
-            if section.name == b".reloc":
-                reloc_section = section
-                break
-        
-        if reloc_section is None:
-            raise Exception(".reloc section not found.")
         
         f.seek(0x80)
         # This is the entirety of the IMAGE_RICH_HEADER, and the PE header up to and not including the directory information. There're sections after that but we won't check them because I think we have enough assurance that this is the right version.
