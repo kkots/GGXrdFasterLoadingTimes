@@ -58,7 +58,7 @@ def read_sections(f):
     for section_ind in range(0, num_sections):
         section_name_length = 0
         for i in range(0, 8):
-            byte_value = vread(section_header_off + i, 1)
+            byte_value = vread(section_header_off + i, 1)[0]
             if byte_value == 0:
                 break
             section_name_length += 1
