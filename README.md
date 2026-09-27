@@ -119,6 +119,8 @@ I don't know. All this does is patch the .EXE file you have yourself selected, a
 
 The best you can do is add this to exceptions. If you're still worried this might be a virus: read through and compile this project yourself, the code is open. You might need a Visual Studio on Windows, as this project was created in that environment. On Linux the project is compiled using CMake. See CMakeLists.txt for details (Linux only, not used for Visual Studio).
 
+There's also a Python version of the patcher, in case you're more comfortable with Python, but the code is still very cryptic and generates raw x86 instructions in the game, which might be hard to understand for anyone not familiar with reverse engineering and assembly languages.
+
 ## Changelog
 
 - 2025 March 3: Fixed a crash when mashing through the loading screen in offline versus human vs human. To apply the patch again you need to find an unpatched backup copy of GuiltyGearXrd.exe and apply the new patcher to it.
