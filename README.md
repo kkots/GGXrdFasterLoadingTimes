@@ -32,6 +32,55 @@ To undo skipping of the intro movie, go to REDGame/Config/REDEngine.ini and remo
 
 See above.
 
+## How to run the patcher on Bazzite Linux
+
+There has been a report that the patcher does not work on Bazzite Linux. In that case, try running the python version: get the `patch_unpatch_detect_patch.py` file from this repository, copy it somewhere. Then,
+
+```bash
+cd DIRECTORY_WITH_THE_PY_FILE
+python3  # on Windows, just use python, it should be the latest version. If you don't have python3, and your python is actually modern enough to run the script, use that
+```
+
+The python interpreter will launch. You can type commands into it:
+
+```python
+from patch_unpatch_detect_patch import patch
+patch(
+ # as it says. Full path to the GuiltyGearXrd.exe, in quotes,
+ # with forward slashes if on Linux, and backslashes if on Windows.
+ # Remember to double each backslash on Windows since they must be
+ # escaped inside the string.
+ # Example for Linux: "Z:/home/youruser/.steam/root/steamapps/common/GUILTY GEAR Xrd -REVELATOR-/Binaries/Win32/GuiltyGearXrd.exe"
+ # Example for Windows: r"C:\Program Files (x86)\Steam\steamapps\common\GUILTY GEAR Xrd -REVELATOR-\Binaries\Win32\GuiltyGearXrd.exe"  (the r is for raw string, in which there's no need to escape characters)
+ guilty_gear_xrd_exe_path,
+
+ # True or False. If False, you will need to press a button to end
+ # the loading screen early, because it keeps playing its animation
+ # even if it's fully loaded. If True, it will end the loading screen
+ # for you as early as it finishes loading.
+ # This only affects pre-battle loading screen, and doesn't affect the whole game
+ # startup.
+ automash,
+
+ # Specify a string, one of the three possible:
+ # "skippable_by_pressing_enter" - this will mean you have to press Enter to skip the game intro with logos.
+ # "skip_automatically" - this will skip the game intro with logos automatically, without having to press Enter.
+ # "dont_change_anything" - whatever situation there is with the game intro at the moment, will stay.
+ intro_movies_skip_mode,
+
+ # Specify True/False.
+ # Recommended if intro_movies_skip_mode is "skippable_by_pressing_enter",
+ # since that option is achieved by editing the REDEngine.ini, and if you don't
+ # do this and have daylight saving (in your country and) on your computer's clock,
+ # the INI will reset all its data by copying it from REDDefault.ini whenever
+ # the daylight saving switches.
+ # If True, this will patch the game to bypass a bug in its shipped MSVCR100.DLL
+ # related to daylight saving that causes the INI files to be considered outdated
+ # twice a year, when daylight saving changes, therefore getting them reset and
+ # erasing all your settings in them and replacing them with ones from the Default*.ini files.
+ fix_bug_that_causes_ini_file_to_reset_twice_a_year_in_countries_with_daylight_saving)
+```
+
 ## Credits
 
 Thanks to WorseThanYou (@worsety) for consulting and ideas on what to do!
